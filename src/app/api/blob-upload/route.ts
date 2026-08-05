@@ -1,59 +1,36 @@
 import { NextResponse } from "next/server";
-import { del } from "@vercel/blob";
+import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
-import { transcribeMedia } from "@/lib/gemini";
 
-export const maxDuration = 60;
+const MAX_SIZE_BYTES = 1024 * 1024 * 1024; // 1 GB
 
-export async function GET() {
+export async function POST(request: Request): Promise<NextResponse> {
   const session = await auth();
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  const transcriptions = await prisma.transcription.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
-  return NextResponse.json({ transcriptions });
-}
-
-export async function POST(req: Request) {
-  const session = await auth();
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  const body = await req.json();
-  const blobUrl = typeof body?.blobUrl === "string" ? body.blobUrl : "";
-  const filename = typeof body?.filename === "string" ? body.filename : "arquivo";
-  const mimeType = typeof body?.mimeType === "string" ? body.mimeType : "";
-
-  if (!blobUrl || !mimeType) {
-    return NextResponse.json({ error: "blobUrl and mimeType required" }, { status: 400 });
+  if (!session) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  const body = (await request.json()) as HandleUploadBody;
+
   try {
-    const fileResponse = await fetch(blobUrl);
-    if (!fileResponse.ok) {
-      throw new Error("Não foi possível baixar o arquivo enviado.");
-    }
-    const blob = await fileResponse.blob();
-
-    const text = await transcribeMedia(blob, mimeType);
-
-    const transcription = await prisma.transcription.create({
-      data: { filename, mimeType, status: "completed", text },
+    const jsonResponse = await handleUpload({
+      body,
+      request,
+      onBeforeGenerateToken: async () => ({
+        allowedContentTypes: ["audio/*", "video/*"],
+        maximumSizeInBytes: MAX_SIZE_BYTES,
+        addRandomSuffix: true,
+      }),
+      onUploadCompleted: async () => {
+        // No-op: the client creates the Transcription record itself, after
+        // the upload finishes, via POST /api/transcriptions.
+      },
     });
-    return NextResponse.json({ transcription }, { status: 201 });
+    return NextResponse.json(jsonResponse);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Erro desconhecido.";
-    const transcription = await prisma.transcription.create({
-      data: { filename, mimeType, status: "error", errorMessage },
-    });
-    return NextResponse.json({ transcription }, { status: 200 });
-  } finally {
-    // The original media file isn't needed once Gemini has processed it —
-    // delete it from Blob storage so uploads don't accumulate over time.
-    await del(blobUrl).catch(() => {
-      /* best-effort cleanup */
-    });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "upload failed" },
+      { status: 400 }
+    );
   }
 }
