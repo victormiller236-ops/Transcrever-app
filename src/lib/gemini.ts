@@ -23,13 +23,27 @@ function getClient(): GoogleGenAI {
 export async function transcribeMedia(blob: Blob, mimeType: string): Promise<string> {
   const ai = getClient();
 
-  const uploaded = await ai.files.upload({
+  let uploaded = await ai.files.upload({
     file: blob,
     config: { mimeType },
   });
 
-  if (!uploaded.uri || !uploaded.mimeType) {
+  if (!uploaded.uri || !uploaded.mimeType || !uploaded.name) {
     throw new Error("Falha ao enviar o arquivo para o Gemini.");
+  }
+
+  const maxWaitMs = 50_000;
+  const start = Date.now();
+  while (uploaded.state === "PROCESSING") {
+    if (Date.now() - start > maxWaitMs) {
+      throw new Error("O arquivo demorou demais para processar. Tente um arquivo menor ou mais curto.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    uploaded = await ai.files.get({ name: uploaded.name });
+  }
+
+  if (uploaded.state === "FAILED") {
+    throw new Error("O Gemini não conseguiu processar o arquivo enviado.");
   }
 
   const response = await ai.models.generateContent({
