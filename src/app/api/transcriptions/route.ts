@@ -4,7 +4,10 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { transcribeMedia } from "@/lib/gemini";
 
-export const maxDuration = 60;
+// 300s is the ceiling on Vercel's Hobby plan (with Fluid Compute, on by
+// default for new projects) — the maximum time this app can wait for a
+// long recording to upload, process, and be transcribed by Gemini.
+export const maxDuration = 300;
 
 export async function GET() {
   const session = await auth();
