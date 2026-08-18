@@ -38,7 +38,9 @@ export async function transcribeMedia(blob: Blob, mimeType: string): Promise<str
   }
   const fileName = uploaded.name;
 
-  const maxWaitMs = 50_000;
+  // Leaves headroom under a função's 300s ceiling for generateContent
+  // itself e o upload/download em volta.
+  const maxWaitMs = 240_000;
   const start = Date.now();
   while (uploaded.state === "PROCESSING") {
     if (Date.now() - start > maxWaitMs) {
