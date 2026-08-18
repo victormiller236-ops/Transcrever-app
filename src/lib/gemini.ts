@@ -20,6 +20,11 @@ function getClient(): GoogleGenAI {
   return client;
 }
 
+/**
+ * Uploads a media file to Gemini's Files API and asks the model to
+ * transcribe the speech it contains. Works for both audio and video since
+ * Gemini accepts both directly (no separate audio extraction needed).
+ */
 export async function transcribeMedia(blob: Blob, mimeType: string): Promise<string> {
   const ai = getClient();
 
@@ -31,6 +36,7 @@ export async function transcribeMedia(blob: Blob, mimeType: string): Promise<str
   if (!uploaded.uri || !uploaded.mimeType || !uploaded.name) {
     throw new Error("Falha ao enviar o arquivo para o Gemini.");
   }
+  const fileName = uploaded.name;
 
   const maxWaitMs = 50_000;
   const start = Date.now();
@@ -39,11 +45,14 @@ export async function transcribeMedia(blob: Blob, mimeType: string): Promise<str
       throw new Error("O arquivo demorou demais para processar. Tente um arquivo menor ou mais curto.");
     }
     await new Promise((resolve) => setTimeout(resolve, 2000));
-    uploaded = await ai.files.get({ name: uploaded.name });
+    uploaded = await ai.files.get({ name: fileName });
   }
 
   if (uploaded.state === "FAILED") {
     throw new Error("O Gemini não conseguiu processar o arquivo enviado.");
+  }
+  if (!uploaded.uri || !uploaded.mimeType) {
+    throw new Error("Falha ao processar o arquivo no Gemini.");
   }
 
   const response = await ai.models.generateContent({
