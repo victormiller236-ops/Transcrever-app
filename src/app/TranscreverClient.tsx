@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
 
 interface TranscriptionDTO {
@@ -14,6 +14,36 @@ interface TranscriptionDTO {
 }
 
 type Stage = "idle" | "uploading" | "transcribing" | "done" | "error";
+
+const RECORDING_MIME_CANDIDATES = [
+  "audio/mp4",
+  "audio/aac",
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/ogg",
+];
+
+function pickRecordingMimeType(): string {
+  if (typeof MediaRecorder === "undefined") return "";
+  for (const type of RECORDING_MIME_CANDIDATES) {
+    if (MediaRecorder.isTypeSupported(type)) return type;
+  }
+  return "";
+}
+
+function extensionForMimeType(mimeType: string): string {
+  if (mimeType.includes("mp4")) return "m4a";
+  if (mimeType.includes("webm")) return "webm";
+  if (mimeType.includes("ogg")) return "ogg";
+  if (mimeType.includes("aac")) return "aac";
+  return "audio";
+}
+
+function formatSeconds(total: number) {
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
 function formatDate(iso: string) {
   return new Intl.DateTimeFormat("pt-BR", {
@@ -35,9 +65,22 @@ export function TranscreverClient({
   const [current, setCurrent] = useState<TranscriptionDTO | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const busy = stage === "uploading" || stage === "transcribing";
+
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   function handlePickFile() {
     fileInputRef.current?.click();
@@ -51,13 +94,12 @@ export function TranscreverClient({
     setErrorMessage(null);
   }
 
-  async function handleTranscribe() {
-    if (!file) return;
+  async function runTranscription(source: File | Blob, filename: string, mimeType: string) {
     setStage("uploading");
     setErrorMessage(null);
 
     try {
-      const blobResult = await upload(file.name, file, {
+      const blobResult = await upload(filename, source, {
         access: "public",
         handleUploadUrl: "/api/blob-upload",
       });
@@ -69,8 +111,8 @@ export function TranscreverClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           blobUrl: blobResult.url,
-          filename: file.name,
-          mimeType: file.type || "application/octet-stream",
+          filename,
+          mimeType: mimeType || "application/octet-stream",
         }),
       });
 
@@ -92,6 +134,77 @@ export function TranscreverClient({
       setErrorMessage(err instanceof Error ? err.message : "Erro desconhecido.");
       setStage("error");
     }
+  }
+
+  async function handleTranscribeFile() {
+    if (!file) return;
+    await runTranscription(file, file.name, file.type || "application/octet-stream");
+  }
+
+  async function startRecording() {
+    setErrorMessage(null);
+    setFile(null);
+    setCurrent(null);
+    setStage("idle");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      const mimeType = pickRecordingMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+
+        const finalMimeType = recorder.mimeType || mimeType || "audio/mp4";
+        const blob = new Blob(chunksRef.current, { type: finalMimeType });
+        chunksRef.current = [];
+
+        if (blob.size === 0) {
+          setErrorMessage("Não deu pra gravar nada. Tenta de novo.");
+          setStage("error");
+          return;
+        }
+
+        const stamp = new Date()
+          .toISOString()
+          .replace(/[:.]/g, "-")
+          .slice(0, 19);
+        const filename = `gravacao-${stamp}.${extensionForMimeType(finalMimeType)}`;
+        void runTranscription(blob, filename, finalMimeType);
+      };
+
+      recorder.start();
+      setRecording(true);
+      setRecordSeconds(0);
+      timerRef.current = setInterval(() => {
+        setRecordSeconds((s) => s + 1);
+      }, 1000);
+    } catch {
+      setErrorMessage(
+        "Não consegui acessar o microfone. Confira se deu permissão pro Safari nas Configurações do iPhone."
+      );
+      setStage("error");
+    }
+  }
+
+  function stopRecording() {
+    setRecording(false);
+    mediaRecorderRef.current?.stop();
   }
 
   async function handleCopy(text: string) {
@@ -134,8 +247,28 @@ export function TranscreverClient({
       <header className="pt-6 pb-4">
         <h1 className="text-3xl font-bold tracking-tight">Transcrever</h1>
         <p className="text-[15px] text-[var(--muted)] mt-1">
-          Selecione um áudio ou vídeo e transforme a fala em texto.
+          Selecione um áudio ou vídeo, ou fale direto no microfone.
         </p>
+
+        <button
+          type="button"
+          onClick={recording ? stopRecording : startRecording}
+          disabled={busy}
+          className={`mt-4 w-full rounded-xl px-4 py-3 text-base font-semibold shadow-sm disabled:opacity-60 flex items-center justify-center gap-2 ${
+            recording
+              ? "bg-[var(--color-danger)] text-white"
+              : "bg-[var(--color-primary)] text-[var(--background)]"
+          }`}
+        >
+          {recording ? (
+            <>
+              <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+              Parar gravação · {formatSeconds(recordSeconds)}
+            </>
+          ) : (
+            <>🎙️ Falar e transcrever</>
+          )}
+        </button>
 
         <input
           ref={fileInputRef}
@@ -148,24 +281,26 @@ export function TranscreverClient({
         <button
           type="button"
           onClick={handlePickFile}
-          disabled={busy}
-          className="mt-4 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-base font-medium shadow-sm disabled:opacity-60"
+          disabled={busy || recording}
+          className="mt-2 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-base font-medium shadow-sm disabled:opacity-60"
         >
-          Selecionar arquivo
+          Ou selecionar arquivo
         </button>
 
         <p className="mt-2 text-sm text-[var(--muted)] break-words">
           {file ? file.name : "Nenhum arquivo selecionado"}
         </p>
 
-        <button
-          type="button"
-          onClick={handleTranscribe}
-          disabled={!file || busy}
-          className="mt-3 w-full rounded-xl bg-[var(--color-primary)] text-[var(--background)] font-semibold py-3 disabled:opacity-40"
-        >
-          Transcrever
-        </button>
+        {file && (
+          <button
+            type="button"
+            onClick={handleTranscribeFile}
+            disabled={busy || recording}
+            className="mt-3 w-full rounded-xl bg-[var(--color-primary)] text-[var(--background)] font-semibold py-3 disabled:opacity-40"
+          >
+            Transcrever
+          </button>
+        )}
 
         {busy && (
           <div className="mt-4">
@@ -173,7 +308,7 @@ export function TranscreverClient({
               <div className="h-full w-1/2 animate-pulse rounded-full bg-[var(--color-accent)]" />
             </div>
             <p className="mt-2 text-center text-sm text-[var(--muted)]">
-              {stage === "uploading" ? "Enviando arquivo..." : "Transcrevendo..."}
+              {stage === "uploading" ? "Enviando..." : "Transcrevendo..."}
             </p>
           </div>
         )}
