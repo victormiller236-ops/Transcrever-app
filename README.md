@@ -68,6 +68,12 @@ src/
       transcriptions/route.ts + [id]/route.ts
 ```
 
+## Ferramentas extras
+
+- `network-scanner/` — script CLI separado (não faz parte do app na Vercel)
+  para listar dispositivos na sua rede local. Veja
+  [`network-scanner/README.md`](network-scanner/README.md).
+
 ## Limitações conhecidas
 
 - Processamento é síncrono (uma requisição só, sem fila) — arquivos muito
