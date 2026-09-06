@@ -1,0 +1,16 @@
+{
+  "name": "network-scanner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Script local para listar dispositivos (celulares, notebooks, etc.) conectados à rede local",
+  "main": "scan.js",
+  "bin": {
+    "network-scanner": "./scan.js"
+  },
+  "scripts": {
+    "scan": "node scan.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
