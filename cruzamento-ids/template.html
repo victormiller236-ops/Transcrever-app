@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cruzamento de IDs - Trilhos x SAP</title>
+<style>
+  :root{--bg:#f4f6f8;--card:#fff;--ink:#1c2530;--muted:#63707e;--line:#dbe1e7;--accent:#0b6e4f;--accent-ink:#fff;--warn:#b45309;--err:#b42318}
+  @media (prefers-color-scheme:dark){:root{--bg:#12171c;--card:#1a2129;--ink:#e6ebf0;--muted:#8d9aa8;--line:#2b3540;--accent:#2fb585;--accent-ink:#06271c;--warn:#f0a75a;--err:#ff8a80}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  header{padding:20px 24px 4px}
+  h1{margin:0;font-size:20px}
+  header p{margin:4px 0 0;color:var(--muted)}
+  main{padding:16px 24px 40px;display:grid;gap:16px}
+  .drops{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+  .drop{background:var(--card);border:2px dashed var(--line);border-radius:10px;padding:18px;text-align:center;cursor:pointer;transition:.15s}
+  .drop.over{border-color:var(--accent)}
+  .drop.ok{border-style:solid;border-color:var(--accent)}
+  .drop b{display:block;font-size:15px;margin-bottom:4px}
+  .drop span{color:var(--muted);font-size:13px}
+  .drop .fn{display:block;margin-top:8px;color:var(--ink);word-break:break-all}
+  .drop input{display:none}
+  .bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  button{font:inherit;padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+  button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  input[type=search]{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);min-width:220px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .stat small{color:var(--muted);display:block}
+  .stat strong{font-size:22px}
+  .msg{padding:10px 14px;border-radius:8px;background:var(--card);border:1px solid var(--line)}
+  .msg.err{color:var(--err);border-color:var(--err)}
+  .msg.warn{color:var(--warn);border-color:var(--warn)}
+  .tablewrap{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:65vh}
+  table{border-collapse:collapse;width:100%;white-space:nowrap}
+  th,td{padding:7px 12px;border-bottom:1px solid var(--line);text-align:left}
+  th{position:sticky;top:0;background:var(--card);cursor:pointer;user-select:none;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+  .tag{padding:2px 8px;border-radius:99px;border:1px solid var(--line);font-size:12px}
+  .tag.sim{color:var(--err);border-color:var(--err)}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>Cruzamento de IDs: Trilhos de tiras x SAP</h1>
+  <p>Carregue as duas planilhas. Os IDs que existem nas duas são extraídos para uma nova aba e você baixa o Excel pronto. Tudo roda no seu navegador, nada é enviado para fora.</p>
+</header>
+<main>
+  <div class="drops">
+    <label class="drop" id="dropT"><input type="file" accept=".xlsx,.xls,.xlsm,.csv">
+      <b>1. Planilha de trilhos / tiras</b><span>Colunas necessárias: Trilho, ID (Data e Hora opcionais)</span><span class="fn">Clique ou arraste o arquivo aqui</span></label>
+    <label class="drop" id="dropS"><input type="file" accept=".xlsx,.xls,.xlsm,.csv">
+      <b>2. Planilha de IDs de bobinas (SAP)</b><span>Coluna necessária: ID de Material</span><span class="fn">Clique ou arraste o arquivo aqui</span></label>
+  </div>
+  <div class="bar">
+    <button class="primary" id="go" disabled>Comparar e extrair</button>
+    <button id="dl" disabled>Baixar Excel (.xlsx)</button>
+    <input type="search" id="q" placeholder="Filtrar resultado..." hidden>
+  </div>
+  <div id="msgs"></div>
+  <div class="stats" id="stats" hidden></div>
+  <div class="tablewrap" id="tw" hidden><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+</main>
+
+<script>/*XLSX_LIB*/</script>
+<script>
+"use strict";
+// Colunas da aba de resultado: [titulo, origem, chave normalizada da coluna na origem]
+const OUT_COLS = [
+  ["Trilho","T","trilho"],
+  ["ID","S","id de material"],
+  ["Data de criação","S","criado em"],
+  ["Material","S","material"],
+  ["Texto breve de material","S","texto breve de material"],
+  ["Largura (mm)","S","largura (mm)"],
+  ["Peso Atual","S","peso atual"],
+  ["Peso Original","S","peso original"],
+  ["Designação da Chapa","S","designacao da chapa"],
+  ["Forma de Criação","S","forma de criacao"],
+  ["Nome completo","S","nome completo"],
+  ["Bloqueado","S","bloqueado"],
+  ["Status do ID de Material","S","status do id de material"],
+];
+const NUM_COLS = new Set(["Largura (mm)","Peso Atual","Peso Original"]);
+
+const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g,"").trim().toLowerCase().replace(/\s+/g," ");
+const normId = v => {
+  if (v == null) return "";
+  let s = String(v).trim();
+  if (/^\d+\.0+$/.test(s)) s = s.replace(/\.0+$/,"");
+  return s.replace(/^0+(?=\d)/,"");
+};
+
+const state = {T:null,S:null,result:null,sheetT:null};
+const $ = id => document.getElementById(id);
+
+function setupDrop(el, key){
+  const inp = el.querySelector("input");
+  const take = async f => {
+    if(!f) return;
+    el.querySelector(".fn").textContent = "Lendo " + f.name + "...";
+    try{
+      const buf = await f.arrayBuffer();
+      await new Promise(r => setTimeout(r, 20));
+      const wb = XLSX.read(buf,{type:"array",cellDates:true});
+      state[key] = {name:f.name, wb, rows:pickSheet(wb,key)};
+      el.classList.add("ok");
+      el.querySelector(".fn").textContent = f.name + " (" + state[key].rows.length.toLocaleString("pt-BR") + " linhas)";
+    }catch(e){
+      state[key]=null; el.classList.remove("ok");
+      el.querySelector(".fn").textContent = "Erro ao ler o arquivo";
+      msg("Não consegui ler " + f.name + ": " + e.message,"err");
+    }
+    $("go").disabled = !(state.T && state.S);
+  };
+  inp.addEventListener("change",()=>take(inp.files[0]));
+  ["dragenter","dragover"].forEach(e=>el.addEventListener(e,ev=>{ev.preventDefault();el.classList.add("over")}));
+  ["dragleave","drop"].forEach(e=>el.addEventListener(e,ev=>{ev.preventDefault();el.classList.remove("over")}));
+  el.addEventListener("drop",ev=>take(ev.dataTransfer.files[0]));
+}
+
+// Escolhe a primeira aba que contenha a coluna-chave (mesmo que não seja a primeira da pasta).
+function pickSheet(wb,key){
+  const need = key==="T" ? "id" : "id de material";
+  for(const n of wb.SheetNames){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:"",raw:true});
+    if(rows.length && Object.keys(rows[0]).some(k=>norm(k)===need)) return rows;
+  }
+  throw new Error('coluna "' + (key==="T"?"ID":"ID de Material") + '" não encontrada em nenhuma aba');
+}
+
+// Mapa chave-normalizada -> nome real da coluna
+const colMap = row => { const m={}; Object.keys(row).forEach(k=>{ if(!(norm(k) in m)) m[norm(k)]=k; }); return m; };
+
+function msg(text,cls=""){ const d=document.createElement("div"); d.className="msg "+cls; d.textContent=text; $("msgs").appendChild(d); }
+
+function compare(){
+  $("msgs").innerHTML="";
+  const tm = colMap(state.T.rows[0]), sm = colMap(state.S.rows[0]);
+  if(!("trilho" in tm)) return msg('A planilha de trilhos precisa ter a coluna "Trilho".',"err");
+
+  const missing = OUT_COLS.filter(c=>c[1]==="S" && !(c[2] in sm)).map(c=>c[0]);
+  if(missing.length) msg("Colunas não encontradas no SAP (ficarão vazias): " + missing.join(", "),"warn");
+
+  const idx = new Map();
+  for(const r of state.S.rows){ const id = normId(r[sm["id de material"]]); if(id && !idx.has(id)) idx.set(id,r); }
+
+  const out=[], notFound=[], seen = new Map();
+  for(const r of state.T.rows){
+    const id = normId(r[tm["id"]]);
+    if(!id) continue;
+    const trilho = r[tm["trilho"]];
+    const k = id + "|" + trilho;
+    if(seen.has(k)) continue;           // mesma leitura repetida no mesmo trilho
+    seen.set(k,1);
+    const s = idx.get(id);
+    if(!s){ notFound.push({Trilho:trilho,ID:id}); continue; }
+    out.push(OUT_COLS.map(([t,src,key])=>{
+      if(src==="T") return trilho;
+      if(key==="id de material") return id;
+      const v = s[sm[key]];
+      return v===undefined ? "" : v;
+    }));
+  }
+  state.result = {out,notFound};
+
+  const stats = [
+    ["IDs lidos nos trilhos", seen.size],
+    ["Coincidiram com o SAP", out.length],
+    ["Não encontrados no SAP", notFound.length],
+    ["Linhas no SAP", idx.size],
+  ];
+  $("stats").innerHTML = stats.map(([l,v])=>`<div class="stat"><small>${l}</small><strong>${v.toLocaleString("pt-BR")}</strong></div>`).join("");
+  $("stats").hidden=false;
+  if(notFound.length) msg("Não encontrados no SAP: " + notFound.map(n=>`ID ${n.ID} (trilho ${n.Trilho})`).join(", ") + ". Geralmente são IDs mais antigos que o período exportado do SAP.","warn");
+  const byId = {}; out.forEach(r=>byId[r[1]]=(byId[r[1]]||0)+1);
+  const repeated = Object.keys(byId).filter(k=>byId[k]>1);
+  if(repeated.length) msg("IDs presentes em mais de um trilho (mantidos uma vez por trilho): " + repeated.join(", "),"warn");
+  render(); $("dl").disabled=false; $("q").hidden=false;
+}
+
+let sortCol=-1, sortDir=1;
+function fmt(title,v){
+  if(v instanceof Date) return v.toLocaleDateString("pt-BR",{timeZone:"UTC"});
+  if(typeof v==="number") return NUM_COLS.has(title) ? v.toLocaleString("pt-BR",{maximumFractionDigits:3}) : String(v);
+  return v;
+}
+function render(){
+  const q = norm($("q").value);
+  let rows = state.result.out;
+  if(q) rows = rows.filter(r=>r.some(v=>norm(v instanceof Date?fmt("",v):v).includes(q)));
+  if(sortCol>=0) rows = [...rows].sort((a,b)=>{ const x=a[sortCol], y=b[sortCol]; return (x>y?1:x<y?-1:0)*sortDir; });
+  $("thead").innerHTML = "<tr>" + OUT_COLS.map((c,i)=>`<th data-i="${i}">${c[0]}${i===sortCol?(sortDir>0?" ▲":" ▼"):""}</th>`).join("") + "</tr>";
+  $("tbody").innerHTML = rows.map(r=>"<tr>"+r.map((v,i)=>{
+    const t = OUT_COLS[i][0], s = fmt(t,v);
+    const cls = NUM_COLS.has(t)?"num":"";
+    if(t==="Bloqueado") return `<td><span class="tag ${/sim/i.test(s)?"sim":""}">${esc(s)}</span></td>`;
+    return `<td class="${cls}">${esc(s)}</td>`;
+  }).join("")+"</tr>").join("");
+  $("tw").hidden=false;
+}
+const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function download(){
+  const {out,notFound} = state.result;
+  const wb = XLSX.utils.book_new();
+  // Aba 1: cópia da planilha de trilhos original
+  const t = XLSX.utils.json_to_sheet(state.T.rows);
+  XLSX.utils.book_append_sheet(wb,t,"Trilhos");
+  // Aba 2: resultado do cruzamento
+  const aoa = [OUT_COLS.map(c=>c[0]), ...out];
+  const ws = XLSX.utils.aoa_to_sheet(aoa,{cellDates:true});
+  const range = XLSX.utils.decode_range(ws["!ref"]);
+  for(let R=1;R<=range.e.r;R++){
+    const d = ws[XLSX.utils.encode_cell({r:R,c:2})];
+    if(d && d.t==="d") d.z="dd/mm/yyyy";
+  }
+  ws["!cols"] = OUT_COLS.map(([t])=>({wch: t==="Texto breve de material"?42 : t==="Nome completo"?30 : Math.max(10,t.length+2)}));
+  ws["!autofilter"] = {ref:ws["!ref"]};
+  ws["!freeze"] = {xSplit:0,ySplit:1};
+  XLSX.utils.book_append_sheet(wb,ws,"Cruzamento");
+  // Aba 3: IDs sem correspondência
+  if(notFound.length){
+    const nf = XLSX.utils.json_to_sheet(notFound);
+    nf["!cols"]=[{wch:10},{wch:12}];
+    XLSX.utils.book_append_sheet(wb,nf,"Nao encontrados");
+  }
+  const ymd = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb,"cruzamento-ids-"+ymd+".xlsx",{cellDates:true});
+}
+
+setupDrop($("dropT"),"T"); setupDrop($("dropS"),"S");
+$("go").addEventListener("click",()=>{ try{compare()}catch(e){msg("Erro: "+e.message,"err")} });
+$("dl").addEventListener("click",download);
+$("q").addEventListener("input",render);
+$("thead").addEventListener("click",e=>{ const th=e.target.closest("th"); if(!th) return; const i=+th.dataset.i; sortDir = (sortCol===i)?-sortDir:1; sortCol=i; render(); });
+</script>
+</body>
+</html>
