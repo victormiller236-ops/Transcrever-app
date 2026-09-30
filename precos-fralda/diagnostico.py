@@ -1,85 +1,58 @@
-"""Diagnóstico único: descobre como cada farmácia responde, para escolher o leitor certo.
+"""Diagnóstico único das lojas que não usam a API VTEX padrão (Araujo, Panvel, Droga Raia).
 
-Só faz GET/POST de leitura, com pausa entre chamadas. Não altera nada.
+Identifica-se sempre como o agente (sem fingir ser navegador), lê o robots.txt e
+faz poucas requisições GET. Se a loja responder 403, o diagnóstico só registra:
+não há tentativa de contornar a proteção.
 """
 
-import json
 import re
 import time
 import urllib.error
 import urllib.request
 
-UA_NAVEGADOR = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/128.0 Safari/537.36"
-)
-UA_AGENTE = "Mozilla/5.0 (compatible; precos-fralda/1.0; consulta diaria de precos)"
+UA = "Mozilla/5.0 (compatible; precos-fralda/1.0; consulta diaria de precos)"
 
 LOJAS = {
-    "Drogaria São Paulo": "www.drogariasaopaulo.com.br",
-    "Pacheco": "www.drogariaspacheco.com.br",
-    "Pague Menos": "www.paguemenos.com.br",
-    "Venâncio": "www.drogariavenancio.com.br",
-    "Araujo": "www.araujo.com.br",
-    "Panvel": "www.panvel.com",
-    "Droga Raia": "www.drogaraia.com.br",
-    "Catarinense": "www.drogariacatarinense.com.br",
+    "Araujo": ("www.araujo.com.br", ["/busca?q=fralda%20pampers", "/fralda%20pampers"]),
+    "Panvel": ("www.panvel.com", ["/panvel/buscarProduto.do?termoPesquisa=fralda%20pampers"]),
+    "Droga Raia": ("www.drogaraia.com.br", ["/search?w=fralda%20pampers"]),
 }
 
-PISTAS = ["vtex", "x-vtex", "__RUNTIME__", "__NEXT_DATA__", "magento", "hybris", "shopify",
-          "cloudflare", "akamai", "perimeterx", "datadome", "captcha", "just a moment"]
 
-
-def pedir(url, ua=UA_NAVEGADOR, corpo=None):
-    dados = json.dumps(corpo).encode() if corpo is not None else None
-    cab = {"User-Agent": ua, "Accept": "application/json,text/html;q=0.9,*/*;q=0.8",
-           "Accept-Language": "pt-BR,pt;q=0.9"}
-    if dados:
-        cab["Content-Type"] = "application/json"
+def pedir(url):
     time.sleep(2)
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "pt-BR,pt;q=0.9"})
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, data=dados, headers=cab), timeout=30) as r:
-            return r.status, dict(r.headers), r.read(400_000).decode("utf-8", "replace")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.status, r.headers.get("Content-Type", ""), r.read(600_000).decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
-        return e.code, dict(e.headers), e.read(2_000).decode("utf-8", "replace")
-    except Exception as e:  # noqa: BLE001 - diagnóstico: queremos ver qualquer erro
-        return 0, {}, f"{type(e).__name__}: {e}"
+        return e.code, e.headers.get("Content-Type", ""), e.read(1_500).decode("utf-8", "replace")
+    except Exception as e:  # noqa: BLE001 - diagnóstico
+        return 0, "", f"{type(e).__name__}: {e}"
 
 
-def resumo(corpo):
-    return re.sub(r"\s+", " ", corpo[:220])
+def curto(texto, n=200):
+    return re.sub(r"\s+", " ", texto[:n])
 
 
 def main():
-    for nome, dominio in LOJAS.items():
+    for nome, (dominio, caminhos) in LOJAS.items():
         print(f"\n===== {nome} ({dominio}) =====")
-        st, cab, corpo = pedir(f"https://{dominio}/")
-        pistas = [p for p in PISTAS if p in corpo.lower() or p in json.dumps(cab).lower()]
-        print(f"home: HTTP {st} server={cab.get('Server') or cab.get('server')} pistas={pistas}")
-        if st != 200:
-            print("  corpo:", resumo(corpo))
-
-        testes = {
-            "vtex legado (UA agente)": (f"https://{dominio}/api/catalog_system/pub/products/search?ft=fralda%20pampers&_from=0&_to=9", UA_AGENTE),
-            "vtex legado (UA navegador)": (f"https://{dominio}/api/catalog_system/pub/products/search?ft=fralda%20pampers&_from=0&_to=9", UA_NAVEGADOR),
-            "vtex legado (sem paginação)": (f"https://{dominio}/api/catalog_system/pub/products/search?ft=fralda%20pampers", UA_NAVEGADOR),
-            "vtex legado (/busca/)": (f"https://{dominio}/api/catalog_system/pub/products/search/fralda%20pampers", UA_NAVEGADOR),
-            "vtex intelligent-search": (f"https://{dominio}/api/io/_v/api/intelligent-search/product_search/?query=fralda%20pampers&count=5", UA_NAVEGADOR),
-        }
-        for rotulo, (url, ua) in testes.items():
-            st, cab, corpo = pedir(url, ua)
-            tipo = cab.get("Content-Type") or cab.get("content-type") or ""
-            extra = ""
-            if st == 200 and "json" in tipo:
-                try:
-                    d = json.loads(corpo)
-                    lista = d if isinstance(d, list) else d.get("products", [])
-                    extra = f" produtos={len(lista)}"
-                    if lista:
-                        extra += f" 1º={lista[0].get('productName') or lista[0].get('name')!r}"
-                except json.JSONDecodeError:
-                    extra = " (JSON inválido)"
-            print(f"  {rotulo}: HTTP {st} {tipo.split(';')[0]}{extra}" + ("" if st == 200 else f" | {resumo(corpo)}"))
+        st, tipo, corpo = pedir(f"https://{dominio}/robots.txt")
+        regras = [l for l in corpo.splitlines() if re.match(r"(?i)\s*(user-agent|disallow)\s*:", l)][:12]
+        print(f"robots.txt: HTTP {st}", regras if st == 200 else curto(corpo))
+        for caminho in caminhos:
+            st, tipo, corpo = pedir(f"https://{dominio}{caminho}")
+            marcas = {
+                "__NEXT_DATA__": "__NEXT_DATA__" in corpo,
+                "ld+json": "application/ld+json" in corpo,
+                "preços 'R$'": corpo.count("R$"),
+                "fralda": corpo.lower().count("fralda"),
+                "access denied": "access denied" in corpo.lower(),
+            }
+            print(f"{caminho}: HTTP {st} {tipo.split(';')[0]} tamanho={len(corpo)} {marcas}")
+            if st != 200:
+                print("   ", curto(corpo))
 
 
 if __name__ == "__main__":

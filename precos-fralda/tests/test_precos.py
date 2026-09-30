@@ -85,6 +85,12 @@ class TestVtex(unittest.TestCase):
         }
     ]
 
+    def test_url_de_busca(self):
+        self.assertEqual(
+            vtex.url_busca("www.loja.com.br", "fralda pampers", 20),
+            "https://www.loja.com.br/api/catalog_system/pub/products/search?ft=fralda%20pampers&_from=20&_to=29",
+        )
+
     def test_ofertas_ignoram_indisponiveis(self):
         ofertas = vtex.ofertas_do_catalogo("Loja", self.CATALOGO)
         self.assertEqual(len(ofertas), 1)
