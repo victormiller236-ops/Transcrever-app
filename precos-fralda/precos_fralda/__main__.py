@@ -71,6 +71,9 @@ def coletar(config: dict, log) -> tuple[dict, list[str], dict]:
                 chave = (oferta.sku_id, oferta.seller_id)
                 if chave in vistos or not texto.corresponde(oferta.nome, termos, excluir):
                     continue
+                # seller "1" é a própria loja; os demais são vendedores parceiros (marketplace)
+                if oferta.seller_id != "1" and not geral.get("vendedores_terceiros", False):
+                    continue
                 vistos.add(chave)
                 tamanho = texto.extrair_tamanho(oferta.nome)
                 if tamanho is not None and tamanhos and tamanho not in tamanhos:

@@ -2,10 +2,11 @@
 # Edite a seção [[produtos]] para as marcas (e, se quiser, o tamanho) que você compra.
 
 [geral]
-paginas = 15           # páginas de 10 resultados por busca, por loja (até 150)
+paginas = 40           # páginas de 10 resultados por busca, por loja (até 400 produtos)
 pausa_segundos = 3     # espera entre requisições (dobra a cada nova tentativa)
 tentativas = 4
 timeout_segundos = 30
+vendedores_terceiros = false  # false: só o preço da própria farmácia; true inclui vendedores parceiros do site
 top = 10               # quantas ofertas mostrar por produto e tamanho no relatório
 # Ofertas cujo nome contém qualquer um destes termos são sempre ignoradas.
 excluir = ["geriatric", "adulto", "roupa intima", "lenco", "pomada", "creme",

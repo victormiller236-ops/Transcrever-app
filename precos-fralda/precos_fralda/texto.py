@@ -48,6 +48,8 @@ def extrair_tamanho(nome: str) -> str | None:
     if _RE_TAMANHO_COMBINADO.search(n):
         return None
     encontrados = {TAMANHOS[m] for m in _RE_TAMANHO.findall(n)}
+    if encontrados == {"RN", "RN+"}:  # "Recém-Nascido RN+": o "recém-nascido" só repete o nome do tamanho
+        return "RN+"
     if len(encontrados) == 1:
         return encontrados.pop()
     return None

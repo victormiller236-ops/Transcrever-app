@@ -40,10 +40,25 @@ python -m unittest discover -s tests
 python -m precos_fralda
 ```
 
+## Lojas cobertas e não cobertas
+
+Testado em execução real em 30/09/2026:
+
+| Loja | Situação |
+|---|---|
+| Drogaria São Paulo, Pacheco, Pague Menos, Venâncio, Catarinense | Coberta (API VTEX) |
+| Araujo, Droga Raia | **Não coberta**: respondem "Access Denied" (proteção contra robôs) a servidores de nuvem, mesmo identificando o agente |
+| Panvel | **Não coberta**: além do bloqueio, o `robots.txt` pede que robôs não usem a busca (`Disallow: /panvel/buscarProduto.do`) |
+
+Não tentamos contornar esses bloqueios (por exemplo, fingindo ser um navegador).
+
 ## Limitações
 
-- Só lojas VTEX. Drogasil, Droga Raia e Panvel usam plataformas próprias e não
-  estão cobertas.
+- Só entra o preço da própria farmácia. Ofertas de vendedores parceiros
+  (marketplace dentro do site) ficam de fora; `vendedores_terceiros = true` no
+  `config.toml` inclui.
+- Se uma busca chega ao limite de `paginas`, o relatório avisa em "Falhas".
+
 - Algumas lojas têm preço regionalizado; sem CEP, vale o preço padrão do site.
 - Promoções "leve 3 pague 2" e cupons não entram (simulação é de 1 unidade,
   sem cupom).

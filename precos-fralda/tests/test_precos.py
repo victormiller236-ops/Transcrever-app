@@ -25,6 +25,8 @@ class TestTamanho(unittest.TestCase):
         self.assertEqual(texto.extrair_tamanho("Fralda Mili Love & Care Recém Nascido c/ 20"), "RN")
         self.assertEqual(texto.extrair_tamanho("Fralda Pampers Premium Care RN+ 34 unidades"), "RN+")
         self.assertEqual(texto.extrair_tamanho("Fralda Pampers Premium Care RN Plus 34 unidades"), "RN+")
+        self.assertEqual(texto.extrair_tamanho("Fralda Pampers Recém-Nascido Premium Care RN+ 36 Unidades"), "RN+")
+        self.assertEqual(texto.extrair_tamanho("Fralda Pampers Recem Nascido Tamanho Rn+ 36 Unidades"), "RN+")
         self.assertIsNone(texto.extrair_tamanho("Fralda Mili RN/P 20 unidades"))
 
     def test_gramas_nao_e_tamanho(self):
