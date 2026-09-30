@@ -2,7 +2,8 @@ import { fail, json, readJson, requireSession, tzFrom } from "@/lib/api";
 import { tasksFromAudio, tasksFromText, VoiceError } from "@/lib/voice";
 
 // Gemini pode levar alguns segundos para ouvir e estruturar o áudio.
-export const maxDuration = 60;
+// (gravações longas do app Android levam mais tempo para o Gemini ouvir)
+export const maxDuration = 120;
 
 // O corpo de uma Vercel Function tem teto de 4,5 MB.
 const MAX_AUDIO_BYTES = 4_200_000;

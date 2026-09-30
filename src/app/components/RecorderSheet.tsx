@@ -9,6 +9,7 @@ import {
   toWav16k,
 } from "@/lib/audio";
 import { formatDuration } from "@/lib/format";
+import { MAX_NATIVE_SECONDS, base64ToBlob, isNativeApp, nativeVoice } from "@/lib/native";
 import type { TaskDraft } from "@/lib/types";
 import { Icon, Sheet } from "./ui";
 import { ReviewPanel } from "./ReviewPanel";
@@ -68,7 +69,11 @@ export function RecorderSheet({
     wake?: { release: () => Promise<void> } | null;
     startedAt?: number;
     cancelled?: boolean;
+    /** gravando pelo serviço nativo do app Android */
+    native?: boolean;
+    levelTimer?: number;
   }>({});
+  const nativeLevel = useRef(0);
   const lastWav = useRef<Blob | null>(null);
   const [canResend, setCanResend] = useState(false);
   const mounted = useRef(true);
@@ -77,6 +82,7 @@ export function RecorderSheet({
     const l = live.current;
     if (l.raf) cancelAnimationFrame(l.raf);
     if (l.timer) window.clearInterval(l.timer);
+    if (l.levelTimer) window.clearInterval(l.levelTimer);
     l.stream?.getTracks().forEach((t) => t.stop());
     void l.ctx?.close().catch(() => {});
     void l.wake?.release().catch(() => {});
@@ -88,6 +94,7 @@ export function RecorderSheet({
     return () => {
       mounted.current = false;
       live.current.cancelled = true;
+      if (live.current.native) void nativeVoice()?.cancel();
       try {
         if (live.current.recorder && live.current.recorder.state !== "inactive")
           live.current.recorder.stop();
@@ -103,7 +110,8 @@ export function RecorderSheet({
     setError(null);
     try {
       const form = new FormData();
-      form.append("audio", new File([wav], "fala.wav", { type: "audio/wav" }));
+      const type = wav.type || "audio/wav";
+      form.append("audio", new File([wav], type === "audio/aac" ? "fala.aac" : "fala.wav", { type }));
       const res = await api<VoiceResponse>("/api/tasks/voice", {
         method: "POST",
         body: form,
@@ -146,7 +154,7 @@ export function RecorderSheet({
     [sendWav],
   );
 
-  const drawWave = useCallback((analyser: AnalyserNode) => {
+  const drawWave = useCallback((getLevel: () => number) => {
     // O canvas só existe depois que a tela de gravação é exibida; espera os próximos quadros.
     const waitForCanvas = (attempt: number) => {
       const canvas = canvasRef.current;
@@ -159,20 +167,13 @@ export function RecorderSheet({
     const start = (canvas: HTMLCanvasElement) => {
       const g = canvas.getContext("2d");
       if (!g) return;
-      const samples = new Uint8Array(analyser.fftSize);
       const bars = 40;
       const history: number[] = new Array(bars).fill(0);
       let lastPush = 0;
       const tick = (now: number) => {
-        analyser.getByteTimeDomainData(samples);
-        // Volume (RMS) do instante: vira uma barra nova a cada ~70 ms, rolando da direita para a esquerda.
+        // Volume do instante: vira uma barra nova a cada ~70 ms, rolando da direita para a esquerda.
         if (now - lastPush > 70) {
-          let sum = 0;
-          for (let i = 0; i < samples.length; i++) {
-            const v = (samples[i] - 128) / 128;
-            sum += v * v;
-          }
-          history.push(Math.min(1, Math.sqrt(sum / samples.length) * 3.2));
+          history.push(Math.min(1, Math.max(0, getLevel())));
           history.shift();
           lastPush = now;
         }
@@ -203,16 +204,90 @@ export function RecorderSheet({
     waitForCanvas(0);
   }, []);
 
+  // Gravação nativa (app Android): o serviço em primeiro plano segura o microfone mesmo com a tela apagada.
+  const finishNative = useCallback(async () => {
+    const voice = nativeVoice();
+    cleanupLive();
+    if (!voice) return;
+    setPhase("processing");
+    try {
+      const r = await voice.stop();
+      if (!mounted.current) return;
+      if (r.seconds < 0.6) {
+        setError("A gravação ficou curta demais. Fale um pouco mais.");
+        setPhase("error");
+        return;
+      }
+      await sendWav(base64ToBlob(r.base64, r.mimeType || "audio/aac"));
+    } catch {
+      if (!mounted.current) return;
+      setError("Não consegui terminar a gravação. Tente de novo.");
+      setPhase("error");
+    }
+  }, [cleanupLive, sendWav]);
+
   const stop = useCallback(() => {
+    if (live.current.native) {
+      void finishNative();
+      return;
+    }
     const r = live.current.recorder;
     if (r && r.state !== "inactive") r.stop();
-  }, []);
+  }, [finishNative]);
+
+  const startNative = useCallback(async () => {
+    const voice = nativeVoice();
+    if (!voice) {
+      setError("O gravador do app Android não respondeu.");
+      setPhase("error");
+      return;
+    }
+    try {
+      await voice.start();
+    } catch (e) {
+      if (!mounted.current) return;
+      const msg = String((e as { message?: string })?.message ?? e);
+      setError(
+        /PERMISSION_DENIED/.test(msg)
+          ? "O MyDay está sem permissão para usar o microfone. Abra Configurações do Android → Apps → MyDay → Permissões → Microfone."
+          : "Não consegui iniciar a gravação.",
+      );
+      setPhase("error");
+      return;
+    }
+    if (!mounted.current) {
+      void voice.cancel();
+      return;
+    }
+    live.current = { native: true, cancelled: false, startedAt: Date.now() };
+    nativeLevel.current = 0;
+    setElapsed(0);
+    setPhase("recording");
+    drawWave(() => nativeLevel.current);
+    live.current.levelTimer = window.setInterval(() => {
+      voice
+        .level()
+        .then((r) => {
+          nativeLevel.current = r.level;
+        })
+        .catch(() => {});
+    }, 90);
+    live.current.timer = window.setInterval(() => {
+      const s = Math.floor((Date.now() - (live.current.startedAt ?? Date.now())) / 1000);
+      setElapsed(s);
+      if (s >= MAX_NATIVE_SECONDS) stop();
+    }, 250);
+  }, [drawWave, stop]);
 
   const start = useCallback(async () => {
     setError(null);
     setResult(null);
     lastWav.current = null;
     setCanResend(false);
+    if (isNativeApp()) {
+      await startNative();
+      return;
+    }
     if (
       !navigator.mediaDevices?.getUserMedia ||
       typeof MediaRecorder === "undefined"
@@ -299,7 +374,16 @@ export function RecorderSheet({
       ctx.createMediaStreamSource(stream).connect(analyser);
       live.current.ctx = ctx;
       setPhase("recording");
-      drawWave(analyser);
+      const samples = new Uint8Array(analyser.fftSize);
+      drawWave(() => {
+        analyser.getByteTimeDomainData(samples);
+        let sum = 0;
+        for (let i = 0; i < samples.length; i++) {
+          const v = (samples[i] - 128) / 128;
+          sum += v * v;
+        }
+        return Math.sqrt(sum / samples.length) * 3.2;
+      });
     } catch {
       setPhase("recording"); // sem ondas, mas grava
     }
@@ -323,7 +407,7 @@ export function RecorderSheet({
       };
       live.current.wake = (await nav.wakeLock?.request("screen")) ?? null;
     } catch {}
-  }, [cleanupLive, drawWave, processBlob, stop]);
+  }, [cleanupLive, drawWave, processBlob, startNative, stop]);
 
   // Começa a gravar ao abrir (ou processa o arquivo recebido).
   const started = useRef(false);
@@ -338,6 +422,7 @@ export function RecorderSheet({
 
   function cancel() {
     live.current.cancelled = true;
+    if (live.current.native) void nativeVoice()?.cancel();
     try {
       if (live.current.recorder && live.current.recorder.state !== "inactive")
         live.current.recorder.stop();
@@ -346,7 +431,9 @@ export function RecorderSheet({
     onClose();
   }
 
-  const remaining = MAX_RECORD_SECONDS - elapsed;
+  const native = isNativeApp();
+  const maxSeconds = native ? MAX_NATIVE_SECONDS : MAX_RECORD_SECONDS;
+  const remaining = maxSeconds - elapsed;
 
   return (
     <Sheet
@@ -396,7 +483,7 @@ export function RecorderSheet({
               <p className="mt-1 text-[13px] text-[var(--faint)]">
                 {remaining <= 15
                   ? `Acaba em ${Math.max(0, remaining)} s`
-                  : `Até ${formatDuration(MAX_RECORD_SECONDS)}`}
+                  : `Até ${formatDuration(maxSeconds)}`}
               </p>
               <canvas
                 ref={canvasRef}
@@ -409,6 +496,14 @@ export function RecorderSheet({
               <p className="mt-2 max-w-xs text-[13px] italic leading-relaxed text-[var(--faint)]">
                 {EXAMPLES[0]}
               </p>
+              {native && (
+                <p
+                  className="mt-4 max-w-xs rounded-xl bg-[var(--surface-2)] px-3 py-2 text-[13px] font-semibold text-[var(--muted)]"
+                  data-testid="screen-off-hint"
+                >
+                  Pode apagar a tela: o MyDay continua gravando.
+                </p>
+              )}
               <div className="mt-auto pt-8">
                 <button
                   type="button"
