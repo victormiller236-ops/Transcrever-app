@@ -126,9 +126,10 @@ function setupDrop(el, key){
     if(!f) return;
     el.querySelector(".fn").textContent = "Lendo " + f.name + "...";
     try{
+      const t0 = performance.now();
       const buf = await f.arrayBuffer();
-      await new Promise(r => setTimeout(r, 20));
-      const wb = XLSX.read(buf,{type:"array",cellDates:true});
+      await new Promise(r => setTimeout(r, 50));
+      const wb = XLSX.read(buf,{type:"array",cellDates:true,dense:true});
       state[key] = {name:f.name, wb, rows:pickSheet(wb,key)};
       el.classList.add("ok");
       el.querySelector(".fn").textContent = f.name + " (" + state[key].rows.length.toLocaleString("pt-BR") + " linhas)";
@@ -139,7 +140,7 @@ function setupDrop(el, key){
     }
     $("go").disabled = !(state.T && state.S);
   };
-  inp.addEventListener("change",()=>take(inp.files[0]));
+  inp.addEventListener("change",async()=>{ await take(inp.files[0]); inp.value=""; });
   ["dragenter","dragover"].forEach(e=>el.addEventListener(e,ev=>{ev.preventDefault();el.classList.add("over")}));
   ["dragleave","drop"].forEach(e=>el.addEventListener(e,ev=>{ev.preventDefault();el.classList.remove("over")}));
   el.addEventListener("drop",ev=>take(ev.dataTransfer.files[0]));
@@ -255,6 +256,9 @@ function download(){
   XLSX.writeFile(wb,"cruzamento-ids-"+ymd+".xlsx",{cellDates:true});
 }
 
+window.addEventListener("error",e=>msg("Erro no navegador: "+e.message,"err"));
+window.addEventListener("unhandledrejection",e=>msg("Erro: "+(e.reason&&e.reason.message||e.reason),"err"));
+if(typeof XLSX==="undefined") msg("A biblioteca de leitura de Excel não carregou. Baixe o arquivo e abra direto no navegador do computador (Chrome/Edge), não pela pré-visualização do chat.","err");
 setupDrop($("dropT"),"T"); setupDrop($("dropS"),"S");
 $("go").addEventListener("click",()=>{ try{compare()}catch(e){msg("Erro: "+e.message,"err")} });
 $("dl").addEventListener("click",download);
