@@ -13,8 +13,7 @@
   h1{margin:0;font-size:20px}
   header p{margin:4px 0 0;color:var(--muted)}
   main{padding:16px 24px 40px;display:grid;gap:16px}
-  .drops{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
-  .drop{background:var(--card);border:2px dashed var(--line);border-radius:10px;padding:18px;text-align:center;cursor:pointer;transition:.15s}
+    .drop{background:var(--card);border:2px dashed var(--line);border-radius:10px;padding:18px;text-align:center;cursor:pointer;transition:.15s}
   .drop.over{border-color:var(--accent)}
   .drop.ok{border-style:solid;border-color:var(--accent)}
   .drop b{display:block;font-size:15px;margin-bottom:4px}
@@ -50,15 +49,12 @@
   <p>Carregue as duas planilhas. Os IDs que existem nas duas são extraídos para uma nova aba e você baixa o Excel pronto. Tudo roda no seu navegador, nada é enviado para fora.</p>
 </header>
 <main>
-  <div class="drops">
-    <label class="drop" id="dropT"><input type="file" accept=".xlsx,.xls,.xlsm,.csv">
-      <b>1. Planilha de trilhos / tiras</b><span>Colunas necessárias: Trilho, ID (Data e Hora opcionais)</span><span class="fn">Clique ou arraste o arquivo aqui</span></label>
-    <label class="drop" id="dropS"><input type="file" accept=".xlsx,.xls,.xlsm,.csv">
-      <b>2. Planilha de IDs de bobinas (SAP)</b><span>Coluna necessária: ID de Material</span><span class="fn">Clique ou arraste o arquivo aqui</span></label>
-  </div>
+  <label class="drop" id="drop"><input type="file" multiple>
+    <b>Clique aqui e escolha as DUAS planilhas de uma vez (ou arraste as duas para cá)</b>
+    <span>Não importa a ordem: a planilha de trilhos e a do SAP são reconhecidas sozinhas.</span>
+    <span class="fn" id="fn"></span></label>
   <div class="bar">
-    <button class="primary" id="go" disabled>Comparar e extrair</button>
-    <button id="dl" disabled>Baixar Excel (.xlsx)</button>
+        <button id="dl" disabled>Baixar Excel (.xlsx)</button>
     <input type="search" id="q" placeholder="Filtrar resultado..." hidden>
   </div>
   <div id="msgs"></div>
@@ -98,41 +94,45 @@ const normId = v => {
 const state = {T:null,S:null,result:null,sheetT:null};
 const $ = id => document.getElementById(id);
 
-function setupDrop(el, key){
-  const inp = el.querySelector("input");
-  const take = async f => {
-    if(!f) return;
-    el.querySelector(".fn").textContent = "Lendo " + f.name + "...";
-    try{
-      const t0 = performance.now();
-      const buf = await f.arrayBuffer();
-      await new Promise(r => setTimeout(r, 50));
-      const wb = XLSX.read(buf,{type:"array",cellDates:true,dense:true});
-      state[key] = {name:f.name, wb, rows:pickSheet(wb,key)};
-      el.classList.add("ok");
-      el.querySelector(".fn").textContent = f.name + " (" + state[key].rows.length.toLocaleString("pt-BR") + " linhas)";
-    }catch(e){
-      state[key]=null; el.classList.remove("ok");
-      el.querySelector(".fn").textContent = "Erro ao ler o arquivo";
-      msg("Não consegui ler " + f.name + ": " + e.message,"err");
-    }
-    $("go").disabled = !(state.T && state.S);
-  };
-  inp.addEventListener("change",async()=>{ await take(inp.files[0]); inp.value=""; });
-  ["dragenter","dragover"].forEach(e=>el.addEventListener(e,ev=>{ev.preventDefault();el.classList.add("over")}));
-  ["dragleave","drop"].forEach(e=>el.addEventListener(e,ev=>{ev.preventDefault();el.classList.remove("over")}));
-  el.addEventListener("drop",ev=>take(ev.dataTransfer.files[0]));
-}
-
-// Escolhe a primeira aba que contenha a coluna-chave (mesmo que não seja a primeira da pasta).
-function pickSheet(wb,key){
-  const need = key==="T" ? "id" : "id de material";
+// Identifica o tipo pelo cabeçalho: SAP tem "ID de Material"; trilhos tem "Trilho" e "ID".
+function classify(wb){
   for(const n of wb.SheetNames){
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:"",raw:true});
-    if(rows.length && Object.keys(rows[0]).some(k=>norm(k)===need)) return rows;
+    if(!rows.length) continue;
+    const keys = Object.keys(rows[0]).map(norm);
+    if(keys.includes("id de material")) return {kind:"S",rows};
+    if(keys.includes("id") && keys.includes("trilho")) return {kind:"T",rows};
   }
-  throw new Error('coluna "' + (key==="T"?"ID":"ID de Material") + '" não encontrada em nenhuma aba');
+  return null;
 }
+
+async function takeFiles(files){
+  $("msgs").innerHTML=""; $("stats").hidden=true; $("tw").hidden=true; $("dl").disabled=true; $("q").hidden=true;
+  state.T=null; state.S=null; $("drop").classList.remove("ok");
+  const lines=[];
+  for(const f of files){
+    $("fn").textContent = "Lendo " + f.name + "... (a planilha do SAP pode levar alguns segundos)";
+    await new Promise(r=>setTimeout(r,50));
+    try{
+      const wb = XLSX.read(await f.arrayBuffer(),{type:"array",cellDates:true,dense:true});
+      const c = classify(wb);
+      if(!c){ msg(f.name+": não reconheci (precisa ter a coluna \"ID de Material\" ou as colunas \"Trilho\" e \"ID\").","err"); continue; }
+      if(state[c.kind]) msg(f.name+": já existe outra planilha do mesmo tipo, usei a última.","warn");
+      state[c.kind] = {name:f.name, rows:c.rows};
+      lines.push((c.kind==="T"?"Trilhos: ":"SAP: ")+f.name+" ("+c.rows.length.toLocaleString("pt-BR")+" linhas)");
+    }catch(e){ msg("Não consegui ler "+f.name+": "+e.message,"err"); }
+  }
+  $("fn").innerHTML = lines.map(esc).join("<br>");
+  if(state.T && state.S){ $("drop").classList.add("ok"); try{compare()}catch(e){msg("Erro: "+e.message,"err")} }
+  else if(lines.length) msg("Falta a planilha "+(state.T?"do SAP":"de trilhos")+". Escolha as duas de uma vez.","warn");
+}
+(function(){
+  const el=$("drop"), inp=el.querySelector("input");
+  inp.addEventListener("change",async()=>{ const fs=[...inp.files]; await takeFiles(fs); inp.value=""; });
+  ["dragenter","dragover"].forEach(e=>el.addEventListener(e,ev=>{ev.preventDefault();el.classList.add("over")}));
+  ["dragleave","drop"].forEach(e=>el.addEventListener(e,ev=>{ev.preventDefault();el.classList.remove("over")}));
+  el.addEventListener("drop",ev=>takeFiles([...ev.dataTransfer.files]));
+})();
 
 // Mapa chave-normalizada -> nome real da coluna
 const colMap = row => { const m={}; Object.keys(row).forEach(k=>{ if(!(norm(k) in m)) m[norm(k)]=k; }); return m; };
@@ -140,7 +140,6 @@ const colMap = row => { const m={}; Object.keys(row).forEach(k=>{ if(!(norm(k) i
 function msg(text,cls=""){ const d=document.createElement("div"); d.className="msg "+cls; d.textContent=text; $("msgs").appendChild(d); }
 
 function compare(){
-  $("msgs").innerHTML="";
   const tm = colMap(state.T.rows[0]), sm = colMap(state.S.rows[0]);
   if(!("trilho" in tm)) return msg('A planilha de trilhos precisa ter a coluna "Trilho".',"err");
 
@@ -237,8 +236,6 @@ function download(){
 window.addEventListener("error",e=>msg("Erro no navegador: "+e.message,"err"));
 window.addEventListener("unhandledrejection",e=>msg("Erro: "+(e.reason&&e.reason.message||e.reason),"err"));
 if(typeof XLSX==="undefined") msg("A biblioteca de leitura de Excel não carregou. Baixe o arquivo e abra direto no navegador do computador (Chrome/Edge), não pela pré-visualização do chat.","err");
-setupDrop($("dropT"),"T"); setupDrop($("dropS"),"S");
-$("go").addEventListener("click",()=>{ try{compare()}catch(e){msg("Erro: "+e.message,"err")} });
 $("dl").addEventListener("click",download);
 $("q").addEventListener("input",render);
 $("thead").addEventListener("click",e=>{ const th=e.target.closest("th"); if(!th) return; const i=+th.dataset.i; sortDir = (sortCol===i)?-sortDir:1; sortCol=i; render(); });
