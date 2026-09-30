@@ -78,7 +78,7 @@ self.addEventListener("push", (event) => {
         tag: p.tag || "pauta",
         renotify: true,
         requireInteraction: Boolean(p.taskId),
-        vibrate: [220, 110, 220],
+        vibrate: [300, 120, 300, 120, 300],
         timestamp: Date.now(),
         data: { url: p.url || "/", taskId: p.taskId || null },
       };

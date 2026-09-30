@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#080a10">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Street Shift</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#070910;color:#fff;font-family:Inter,system-ui,sans-serif}
+body{touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#ui{position:fixed;inset:0;pointer-events:none}
+.top{display:flex;justify-content:space-between;padding:18px 18px 0;font-weight:800;text-shadow:0 2px 8px #000}
+.pill{background:#111725cc;border:1px solid #ffffff18;border-radius:14px;padding:8px 12px}
+#screen{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:auto}
+.panel{width:min(90vw,420px);background:#0d111bdF;border:1px solid #ffffff18;border-radius:24px;padding:24px;box-shadow:0 20px 80px #0008;text-align:center}
+h1{font-size:42px;line-height:.9;margin:0 0 10px;letter-spacing:-2px}
+.sub{opacity:.7;margin-bottom:22px}
+button{border:0;border-radius:16px;padding:15px 22px;font-size:17px;font-weight:900;background:#fff;color:#080910;min-width:170px}
+button:active{transform:scale(.97)}
+.hidden{display:none!important}
+#raceUI{position:absolute;left:0;right:0;bottom:20px;display:flex;flex-direction:column;align-items:center;gap:12px}
+#rpm{width:min(88vw,430px);height:18px;border-radius:99px;background:#202532;overflow:hidden;border:1px solid #ffffff20}
+#rpm i{display:block;height:100%;width:10%;background:linear-gradient(90deg,#3df28a 0 55%,#ffd23f 75%,#ff435c 100%)}
+#shift{width:min(88vw,430px);height:76px;font-size:25px;letter-spacing:2px;background:#ff315b;color:white;box-shadow:0 10px 35px #ff315b55}
+#hint{font-size:12px;opacity:.6}
+#result{pointer-events:auto}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0}
+.stat{background:#151b29;border-radius:14px;padding:12px}.stat b{display:block;font-size:21px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div class="top">
+    <div class="pill">💰 <span id="money">5,000</span></div>
+    <div class="pill">🏆 <span id="wins">0</span></div>
+  </div>
+  <div id="screen">
+    <div class="panel" id="menu">
+      <h1>STREET<br>SHIFT</h1>
+      <div class="sub">Arrancada arcade para celular</div>
+      <div class="stats">
+        <div class="stat">CARRO<b>V8 Turbo</b></div>
+        <div class="stat">POTÊNCIA<b>620 cv</b></div>
+      </div>
+      <button id="start">CORRER</button>
+    </div>
+    <div class="panel hidden" id="result">
+      <h1 id="resultTitle">VITÓRIA!</h1>
+      <div class="sub" id="resultSub"></div>
+      <div class="stats">
+        <div class="stat">TEMPO<b id="timeStat">—</b></div>
+        <div class="stat">RECOMPENSA<b id="rewardStat">—</b></div>
+      </div>
+      <button id="again">CORRER NOVAMENTE</button>
+    </div>
+  </div>
+  <div id="raceUI" class="hidden">
+    <div id="rpm"><i></i></div>
+    <button id="shift">TOQUE PARA TROCAR</button>
+    <div id="hint">Troque na faixa verde para ganhar aceleração</div>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+let W,H,dpr,mode='menu',t=0,last=0,carX=0,oppX=0,speed=0,oppSpeed=0,gear=1,rpm=0,shiftFlash=0,raceStart=0;
+let money=5000,wins=0;
+const $=id=>document.getElementById(id);
+function resize(){dpr=devicePixelRatio||1;W=innerWidth;H=innerHeight;c.width=W*dpr;c.height=H*dpr;x.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener('resize',resize);resize();
+
+function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}
+function drawCar(px,py,s=1,color='#e83d5a'){
+  x.save();x.translate(px,py);x.scale(s,s);
+  x.fillStyle='#05070b';roundRect(x,-62,0,124,32,12);
+  x.fillStyle=color;roundRect(x,-58,-7,116,28,10);
+  x.fillStyle='#161b26';roundRect(x,-30,-23,60,22,7);
+  x.fillStyle='#9dd7ff';roundRect(x,-24,-19,48,14,5);
+  x.fillStyle='#080a0e';x.beginPath();x.arc(-42,25,12,0,7);x.arc(42,25,12,0,7);x.fill();
+  x.fillStyle='#8c93a0';x.beginPath();x.arc(-42,25,5,0,7);x.arc(42,25,5,0,7);x.fill();
+  x.restore()
+}
+function draw(){
+  const g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'#11182a');g.addColorStop(.5,'#0a0d15');g.addColorStop(1,'#05060a');x.fillStyle=g;x.fillRect(0,0,W,H);
+  // city
+  x.fillStyle='#141a27';
+  for(let i=0;i<18;i++){let bw=30+(i*17)%65,bh=70+(i*43)%170;let bx=(i*97-(t*speed*.04)%97);x.fillRect(bx,H*.38-bh,bw,bh)}
+  // road
+  x.fillStyle='#20242c';x.fillRect(0,H*.53,W,H*.47);
+  x.strokeStyle='#3b414c';x.lineWidth=3;
+  for(let yy=H*.59;yy<H;yy+=38){x.beginPath();x.moveTo(0,yy);x.lineTo(W,yy);x.stroke()}
+  x.strokeStyle='#d5d8df';x.lineWidth=5;x.setLineDash([35,28]);x.lineDashOffset=-(t*speed*.5);x.beginPath();x.moveTo(0,H*.76);x.lineTo(W,H*.76);x.stroke();x.setLineDash([]);
+  if(mode==='race'){
+    const playerY=H*.72, opponentY=H*.62;
+    drawCar(W*.5+carX,playerY,Math.min(1,W/430),'#e83d5a');
+    drawCar(W*.5+oppX,opponentY,Math.min(1,W/430),'#3c7cff');
+    x.fillStyle='#fff';x.font='800 18px system-ui';x.textAlign='center';x.fillText('GEAR '+gear,W/2,H*.47);
+    x.font='700 14px system-ui';x.fillStyle='#ffffffaa';x.fillText(Math.floor(speed*1.7)+' km/h',W/2,H*.51);
+  } else {
+    drawCar(W/2,H*.72,Math.min(1,W/430),'#e83d5a');
+    x.fillStyle='#ffffff18';x.font='900 70px system-ui';x.textAlign='center';x.fillText('SS',W/2,H*.25);
+  }
+}
+function loop(now){let dt=Math.min(.035,(now-last)/1000||0);last=now;t+=dt;if(mode==='race')update(dt);draw();requestAnimationFrame(loop)}
+function update(dt){
+  rpm += dt*(1.45+gear*.12);
+  if(rpm>1)rpm-=1;
+  $('rpm').firstElementChild.style.width=(15+rpm*85)+'%';
+  shiftFlash=Math.max(0,shiftFlash-dt);
+  speed += dt*(18 + gear*2.5);
+  oppSpeed += dt*(19.4);
+  carX += (Math.random()-.5)*dt*2; oppX += (Math.random()-.5)*dt*2;
+  if(t-raceStart>7.8 || speed>175){finish()}
+}
+function startRace(){
+  mode='race';gear=1;rpm=.15;speed=0;oppSpeed=0;carX=oppX=0;raceStart=t;
+  $('menu').classList.add('hidden');$('result').classList.add('hidden');$('raceUI').classList.remove('hidden');
+  if(navigator.vibrate)navigator.vibrate(60)
+}
+function shift(){
+  if(mode!=='race')return;
+  const quality=Math.abs(rpm-.58);
+  if(quality<.18){speed+=9; if(navigator.vibrate)navigator.vibrate([20,30,20])}
+  else if(quality<.34){speed+=2}
+  else {speed-=4}
+  if(gear<6)gear++;
+  rpm=.18;shiftFlash=.2;
+}
+function finish(){
+  mode='result';$('raceUI').classList.add('hidden');
+  const win=speed>=oppSpeed;
+  if(win){wins++;money+=500}
+  else money=Math.max(0,money-100);
+  $('wins').textContent=wins;$('money').textContent=money.toLocaleString('pt-BR');
+  $('resultTitle').textContent=win?'VITÓRIA!':'DERROTA';
+  $('resultSub').textContent=win?'Você venceu a arrancada.':'O adversário chegou primeiro.';
+  $('timeStat').textContent=(t-raceStart).toFixed(2)+' s';
+  $('rewardStat').textContent=win?'+ R$ 500':'− R$ 100';
+  $('result').classList.remove('hidden');
+}
+$('start').onclick=startRace;$('again').onclick=startRace;$('shift').onclick=shift;
+addEventListener('pointerdown',e=>{if(mode==='race' && e.target!==$('shift'))shift()});
+requestAnimationFrame(loop);
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js'));
+</script>
+</body>
+</html>

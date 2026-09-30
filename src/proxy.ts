@@ -23,6 +23,6 @@ export default auth((req) => {
 // /login, o Chrome recusa registrar o service worker e o app deixa de instalar.
 export const config = {
   matcher: [
-    "/((?!api/auth|api/cron|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|offline.html|icons/|screenshots/).*)",
+    "/((?!api/auth|api/cron|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|offline.html|icons/|screenshots/|street-shift).*)",
   ],
 };

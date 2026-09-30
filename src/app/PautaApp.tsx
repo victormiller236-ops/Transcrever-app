@@ -63,22 +63,34 @@ function unlockAudio() {
     if (audioCtx.state === "suspended") void audioCtx.resume();
   } catch {}
 }
+// Um alarme de verdade precisa dar tempo de a pessoa notar e ir até o
+// celular — 3 rodadas da mesma sequência de notas, com pausa entre elas,
+// ~3s no total (antes eram 3 notas soltas em 0,66s, curto demais pra
+// servir de aviso).
 function beep() {
   try {
     if (!audioCtx) return;
     const t0 = audioCtx.currentTime;
-    [880, 660, 880].forEach((f, i) => {
-      const o = audioCtx!.createOscillator();
-      const g = audioCtx!.createGain();
-      o.type = "sine";
-      o.frequency.value = f;
-      g.gain.setValueAtTime(0.0001, t0 + i * 0.22);
-      g.gain.exponentialRampToValueAtTime(0.25, t0 + i * 0.22 + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.22 + 0.18);
-      o.connect(g).connect(audioCtx!.destination);
-      o.start(t0 + i * 0.22);
-      o.stop(t0 + i * 0.22 + 0.2);
-    });
+    const notes = [880, 660, 880];
+    const noteGap = 0.24;
+    const roundDuration = notes.length * noteGap + 0.3; // inclui a pausa até a próxima rodada
+    const rounds = 3;
+    for (let r = 0; r < rounds; r++) {
+      const roundStart = t0 + r * roundDuration;
+      notes.forEach((f, i) => {
+        const start = roundStart + i * noteGap;
+        const o = audioCtx!.createOscillator();
+        const g = audioCtx!.createGain();
+        o.type = "sine";
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, start);
+        g.gain.exponentialRampToValueAtTime(0.35, start + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, start + noteGap - 0.02);
+        o.connect(g).connect(audioCtx!.destination);
+        o.start(start);
+        o.stop(start + noteGap);
+      });
+    }
   } catch {}
 }
 
@@ -232,12 +244,15 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
     beep();
     try {
       // O Chrome bloqueia vibração antes do primeiro toque na página.
-      if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.([200, 100, 200]);
+      if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.([300, 120, 300, 120, 300]);
     } catch {}
   }, []);
 
   useEffect(() => {
     const check = () => {
+      // Com a aba escondida/tela travada ninguém vê o alerta local; espera
+      // ficar visível de novo em vez de bipar no vazio e marcar como avisado.
+      if (document.visibilityState !== "visible") return;
       const now = Date.now();
       for (const t of tasksRef.current) {
         if (t.done || !t.dueAt) continue;
@@ -258,7 +273,11 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
     };
     check();
     const i = window.setInterval(check, 15_000);
-    return () => window.clearInterval(i);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      window.clearInterval(i);
+      document.removeEventListener("visibilitychange", check);
+    };
   }, [pushAlert, tasks]);
 
   // Push que chega com o app aberto: o service worker repassa para cá em vez de notificar.

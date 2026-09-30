@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["web-push"],
+  async rewrites() {
+    return [{ source: "/street-shift", destination: "/street-shift/index.html" }];
+  },
   async headers() {
     return [
       {
