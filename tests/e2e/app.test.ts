@@ -589,6 +589,130 @@ describe("avisos", () => {
   });
 });
 
+describe("aviso falado", () => {
+  /** Troca a fala do navegador por uma que só anota o que "disse". */
+  async function fakeSpeech(ctx: BrowserContext, opts: { blocked?: boolean } = {}) {
+    await ctx.addInitScript((blocked) => {
+      const spoken: string[] = [];
+      (window as unknown as { __spoken: string[] }).__spoken = spoken;
+      class U {
+        text: string;
+        lang = "";
+        voice: unknown = null;
+        rate = 1;
+        volume = 1;
+        onend: (() => void) | null = null;
+        onerror: ((e: { error: string }) => void) | null = null;
+        constructor(t: string) {
+          this.text = t;
+        }
+      }
+      (window as unknown as Record<string, unknown>).SpeechSynthesisUtterance = U;
+      Object.defineProperty(window, "speechSynthesis", {
+        configurable: true,
+        value: {
+          getVoices: () => [{ lang: "pt-BR", name: "fake" }],
+          cancel() {},
+          addEventListener() {},
+          removeEventListener() {},
+          speak(u: U) {
+            if (blocked) return void setTimeout(() => u.onerror?.({ error: "not-allowed" }), 5);
+            spoken.push(u.text);
+            setTimeout(() => u.onend?.(), 5);
+          },
+        },
+      });
+    }, opts.blocked ?? false);
+  }
+  const spokenList = (page: Page) => page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken);
+
+  it("tarefa que venceu é lida em voz alta, com o texto certo", async () => {
+    await prisma.task.create({ data: { title: "Hora da reunião", dueAt: new Date(Date.now() - 30_000), hasTime: true } });
+    const ctx = await newContext();
+    await fakeSpeech(ctx);
+    const page = await openApp(ctx);
+    await page.getByTestId("alert").waitFor({ timeout: 10_000 });
+    await expect.poll(() => spokenList(page), { timeout: 5000 }).toEqual(["Lembrete: Hora da reunião. É agora."]);
+    await ctx.close();
+  });
+
+  it("com a leitura desligada nos Ajustes, o aviso aparece mas não fala; o botão Ouvir fala mesmo assim", async () => {
+    const ctx = await newContext();
+    await fakeSpeech(ctx);
+    const page = await openApp(ctx);
+    await page.getByTestId("nav-ajustes").click();
+    await page.getByTestId("toggle-speak").click();
+    expect(await page.getByTestId("toggle-speak").innerText()).toMatch(/desligado/);
+    await page.getByTestId("nav-tarefas").click();
+
+    await prisma.task.create({ data: { title: "Silenciosa", dueAt: new Date(Date.now() - 20_000), hasTime: true } });
+    await page.reload();
+    await page.getByTestId("alert").waitFor({ timeout: 10_000 });
+    await page.waitForTimeout(1600);
+    expect(await spokenList(page)).toEqual([]);
+
+    await page.getByTestId("alert-speak").click();
+    await expect.poll(() => spokenList(page)).toEqual(["Lembrete: Silenciosa. É agora."]);
+    await ctx.close();
+  });
+
+  it("tocar no aviso (?task=ID&speak=1) abre o alerta da tarefa e lê; a URL fica limpa", async () => {
+    const t = await prisma.task.create({ data: { title: "Buscar encomenda", dueAt: new Date(Date.now() + 45 * 60_000), hasTime: true, remindMinutesBefore: 30 } });
+    const ctx = await newContext();
+    await fakeSpeech(ctx);
+    const page = await openApp(ctx);
+    await page.goto(`/?task=${t.id}&speak=1`);
+    await page.getByTestId("alert").waitFor({ timeout: 10_000 });
+    expect(await page.getByTestId("alert").innerText()).toContain("Buscar encomenda");
+    await expect.poll(() => spokenList(page)).toEqual(["Lembrete: Buscar encomenda. Começa daqui a 30 minutos."]);
+    expect(new URL(page.url()).search).toBe("");
+    // não abre o editor por cima
+    expect(await page.getByTestId("task-form").count()).toBe(0);
+    await ctx.close();
+  });
+
+  it("navegador bloqueando o som: o aviso continua na tela e o botão Ouvir está ali", async () => {
+    await prisma.task.create({ data: { title: "Bloqueada", dueAt: new Date(Date.now() - 20_000), hasTime: true } });
+    const ctx = await newContext();
+    await fakeSpeech(ctx, { blocked: true });
+    const page = await openApp(ctx);
+    await page.getByTestId("alert").waitFor({ timeout: 10_000 });
+    expect(await page.getByTestId("alert-speak").count()).toBe(1);
+    await ctx.close();
+  });
+
+  it("Ajustes → Testar a voz", async () => {
+    const ctx = await newContext();
+    await fakeSpeech(ctx);
+    const page = await openApp(ctx);
+    await page.getByTestId("nav-ajustes").click();
+    await page.getByTestId("test-speak").click();
+    await expect.poll(() => spokenList(page)).toEqual(["Lembrete: ligar para o banco. É agora."]);
+    await ctx.close();
+  });
+
+  it("push recebido com o app aberto lê o texto falado que veio do servidor", async () => {
+    const ctx = await newContext();
+    await fakeSpeech(ctx);
+    const page = await openApp(ctx);
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    const task = await prisma.task.create({ data: { title: "Pagar boleto", dueAt: new Date(Date.now() + 3600_000), hasTime: false } });
+    const cdp = await ctx.newCDPSession(page);
+    const regs: { registrationId: string }[] = [];
+    cdp.on("ServiceWorker.workerRegistrationUpdated", (e: { registrations: { registrationId: string }[] }) => regs.push(...e.registrations));
+    await cdp.send("ServiceWorker.enable");
+    await expect.poll(() => regs.length).toBeGreaterThan(0);
+    await cdp.send("ServiceWorker.deliverPushMessage", {
+      origin: stack.baseUrl,
+      registrationId: regs.at(-1)!.registrationId,
+      data: JSON.stringify({ title: "Pagar boleto", body: "Para hoje", spoken: "Lembrete: Pagar boleto. É para hoje.", url: `/?task=${task.id}&speak=1`, tag: `task-${task.id}`, taskId: task.id, actions: true }),
+    });
+    await page.getByTestId("alert").filter({ hasText: "Pagar boleto" }).waitFor({ timeout: 10_000 });
+    await expect.poll(() => spokenList(page)).toContain("Lembrete: Pagar boleto. É para hoje.");
+    await ctx.close();
+  });
+});
+
 describe("botão Voltar do Android", () => {
   it("Voltar fecha a folha aberta em vez de sair do app; fechar pelo X não deixa lixo no histórico", async () => {
     await prisma.task.create({ data: { title: "Tarefa para abrir" } });

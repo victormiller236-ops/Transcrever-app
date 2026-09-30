@@ -12,6 +12,7 @@ import {
   sendTestPush,
   type PushState,
 } from "@/lib/pwa";
+import { getSpeakEnabled, setSpeakEnabled, speak, speechSupported } from "@/lib/speech";
 import { Icon, Logo, useToast } from "./ui";
 
 export interface InstallPromptEvent extends Event {
@@ -47,6 +48,8 @@ export function SettingsTab({
   const [serverReady, setServerReady] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [standalone, setStandalone] = useState(false);
+  const [speakOn, setSpeakOn] = useState(true);
+  const [canSpeak, setCanSpeak] = useState(false);
 
   const refresh = useCallback(async () => {
     setPush(await getPushState());
@@ -57,6 +60,8 @@ export function SettingsTab({
     /* eslint-disable react-hooks/set-state-in-effect */
     void refresh();
     setStandalone(isStandalone());
+    setSpeakOn(getSpeakEnabled());
+    setCanSpeak(speechSupported());
     /* eslint-enable react-hooks/set-state-in-effect */
     api("/api/push/key")
       .then(() => setServerReady(true))
@@ -158,6 +163,47 @@ export function SettingsTab({
                   Enviar aviso de teste
                 </button>
               )}
+            </div>
+          </>
+        )}
+      </Card>
+
+      <Card title="Aviso falado" icon="volume">
+        {!canSpeak ? (
+          <p className="text-[14px] leading-relaxed text-[var(--muted)]">Este navegador não sabe ler em voz alta.</p>
+        ) : (
+          <>
+            <p className="mb-4 text-[14px] leading-relaxed text-[var(--muted)]">
+              Quando o MyDay está aberto, o aviso é lido em voz alta (voz em português do seu Android). Com a tela
+              apagada ou o app fechado, o aviso toca o som e vibra; ao tocar nele, o app abre e lê o lembrete.
+            </p>
+            <div className="flex flex-col gap-2.5">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={speakOn}
+                data-testid="toggle-speak"
+                onClick={() => {
+                  setSpeakOn(!speakOn);
+                  setSpeakEnabled(!speakOn);
+                }}
+                className={`h-13 rounded-2xl py-3.5 text-[16px] font-bold ${
+                  speakOn ? "bg-[var(--color-primary)] text-[var(--on-primary)]" : "border border-[var(--line)]"
+                }`}
+              >
+                {speakOn ? "Ler em voz alta: ligado" : "Ler em voz alta: desligado"}
+              </button>
+              <button
+                type="button"
+                data-testid="test-speak"
+                onClick={async () => {
+                  const r = await speak("Lembrete: ligar para o banco. É agora.");
+                  if (r === "blocked") toast.show("O navegador bloqueou o som. Toque de novo.", { tone: "error" });
+                }}
+                className="rounded-2xl border border-[var(--line)] py-3.5 text-[15px] font-semibold"
+              >
+                Testar a voz
+              </button>
             </div>
           </>
         )}

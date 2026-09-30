@@ -78,7 +78,9 @@ self.addEventListener("push", (event) => {
         tag: p.tag || "pauta",
         renotify: true,
         requireInteraction: Boolean(p.taskId),
-        vibrate: [220, 110, 220],
+        silent: false,
+        // padrão longo: com a tela apagada a vibração é o que chama a atenção
+        vibrate: [400, 200, 400, 200, 800],
         timestamp: Date.now(),
         data: { url: p.url || "/", taskId: p.taskId || null },
       };

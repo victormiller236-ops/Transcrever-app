@@ -13,6 +13,8 @@ import {
   sortTasks,
 } from "@/lib/format";
 import { getPushState, pushSupported, syncPushSubscription } from "@/lib/pwa";
+import { reminderText } from "@/lib/reminder-text";
+import { getSpeakEnabled, speak, stopSpeaking } from "@/lib/speech";
 import type { TaskDraft, TaskDTO } from "@/lib/types";
 import { AlertBanner, type AlertItem } from "./components/AlertBanner";
 import { emptyDraft } from "./components/DraftEditor";
@@ -194,6 +196,8 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
 
   /* ---------- ações de URL (atalhos do ícone e toque na notificação) ---------- */
   const pendingOpenId = useRef<string | null>(null);
+  // Toque no aviso (?task=ID&speak=1): abre o alerta da tarefa e lê em voz alta, em vez do editor.
+  const pendingSpeakId = useRef<string | null>(null);
   useEffect(() => {
     const url = new URL(window.location.href);
     const action = url.searchParams.get("action");
@@ -202,10 +206,12 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
     if (action === "record") setSheet({ kind: "record" });
     else if (action === "new") setSheet({ kind: "new" });
     /* eslint-enable react-hooks/set-state-in-effect */
-    if (taskId) pendingOpenId.current = taskId;
+    if (taskId && url.searchParams.get("speak") === "1") pendingSpeakId.current = taskId;
+    else if (taskId) pendingOpenId.current = taskId;
     if (action || taskId || url.searchParams.get("source")) {
       url.searchParams.delete("action");
       url.searchParams.delete("task");
+      url.searchParams.delete("speak");
       url.searchParams.delete("source");
       window.history.replaceState(null, "", url.pathname + (url.search || ""));
     }
@@ -218,7 +224,6 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
       setSheet({ kind: "edit", id });
     }
   }, [tasks]);
-
   /* ---------- avisos dentro do app ---------- */
   useEffect(() => {
     try {
@@ -234,7 +239,29 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
       // O Chrome bloqueia vibração antes do primeiro toque na página.
       if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.([200, 100, 200]);
     } catch {}
+    // Depois do bip, lê o aviso em voz alta. Se o navegador recusar (página sem toque), o botão "Ouvir" resolve.
+    if (getSpeakEnabled()) window.setTimeout(() => void speak(item.spoken ?? item.title), 900);
   }, []);
+
+  const openAlertFor = useCallback((t: TaskDTO, key: string) => {
+    const { body, spoken } = reminderText(
+      { title: t.title, dueAt: new Date(t.dueAt ?? Date.now()), hasTime: t.time !== null, remindMinutesBefore: t.remindMinutesBefore },
+      new Date(),
+      tz,
+    );
+    pushAlert({ key, taskId: t.id, title: t.title, body, spoken });
+  }, [pushAlert, tz]);
+
+  // Abriu pelo toque no aviso: mostra o alerta da tarefa e fala.
+  useEffect(() => {
+    const id = pendingSpeakId.current;
+    const t = id ? tasks.find((x) => x.id === id) : undefined;
+    if (id && t) {
+      pendingSpeakId.current = null;
+      setTab("tarefas");
+      openAlertFor(t, `open:${t.id}:${t.dueAt}`);
+    }
+  }, [tasks, openAlertFor]);
 
   useEffect(() => {
     const check = () => {
@@ -248,28 +275,23 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
         if (alerted.current.has(key)) continue;
         alerted.current.add(key);
         lsSet(ALERTED_KEY, JSON.stringify([...alerted.current].slice(-300)));
-        pushAlert({
-          key,
-          taskId: t.id,
-          title: t.title,
-          body: t.time ? (t.remindMinutesBefore > 0 ? `Já vai começar · ${t.time}` : `Agora · ${t.time}`) : "Para hoje",
-        });
+        openAlertFor(t, key);
       }
     };
     check();
     const i = window.setInterval(check, 15_000);
     return () => window.clearInterval(i);
-  }, [pushAlert, tasks]);
+  }, [openAlertFor, tasks]);
 
   // Push que chega com o app aberto: o service worker repassa para cá em vez de notificar.
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     const onMessage = (e: MessageEvent) => {
       if (e.data?.type !== "push") return;
-      const p = e.data.payload as { title?: string; body?: string; taskId?: string; tag?: string };
+      const p = e.data.payload as { title?: string; body?: string; spoken?: string; taskId?: string; tag?: string };
       if (p.taskId) {
         void refresh();
-        pushAlert({ key: `push:${p.tag ?? p.taskId}:${Date.now() - (Date.now() % 60_000)}`, taskId: p.taskId, title: p.title ?? "Tarefa", body: p.body ?? "" });
+        pushAlert({ key: `push:${p.tag ?? p.taskId}:${Date.now() - (Date.now() % 60_000)}`, taskId: p.taskId, title: p.title ?? "Tarefa", body: p.body ?? "", spoken: p.spoken });
       } else if (p.body) {
         toast.show(p.body);
       }
@@ -406,11 +428,13 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
   }
 
   async function alertDone(a: AlertItem) {
+    stopSpeaking();
     setAlerts((l) => l.filter((x) => x.key !== a.key));
     const t = tasksRef.current.find((x) => x.id === a.taskId);
     if (t) await toggleTask(t);
   }
   async function alertSnooze(a: AlertItem) {
+    stopSpeaking();
     setAlerts((l) => l.filter((x) => x.key !== a.key));
     if (!a.taskId) return;
     try {
@@ -481,7 +505,11 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
         alerts={alerts}
         onDone={alertDone}
         onSnooze={alertSnooze}
-        onDismiss={(a) => setAlerts((l) => l.filter((x) => x.key !== a.key))}
+        onDismiss={(a) => {
+          stopSpeaking();
+          setAlerts((l) => l.filter((x) => x.key !== a.key));
+        }}
+        onSpeak={(a) => void speak(a.spoken ?? a.title)}
         onOpen={(a) => {
           setAlerts((l) => l.filter((x) => x.key !== a.key));
           if (a.taskId) setSheet({ kind: "edit", id: a.taskId });

@@ -1,5 +1,6 @@
 "use client";
 
+import { speechSupported } from "@/lib/speech";
 import { Icon } from "./ui";
 
 export interface AlertItem {
@@ -7,6 +8,8 @@ export interface AlertItem {
   taskId: string | null;
   title: string;
   body: string;
+  /** Texto para leitura em voz alta */
+  spoken?: string;
 }
 
 export function AlertBanner({
@@ -15,12 +18,14 @@ export function AlertBanner({
   onSnooze,
   onDismiss,
   onOpen,
+  onSpeak,
 }: {
   alerts: AlertItem[];
   onDone: (a: AlertItem) => void;
   onSnooze: (a: AlertItem) => void;
   onDismiss: (a: AlertItem) => void;
   onOpen: (a: AlertItem) => void;
+  onSpeak: (a: AlertItem) => void;
 }) {
   if (alerts.length === 0) return null;
   return (
@@ -38,6 +43,17 @@ export function AlertBanner({
               <span className="block text-[17px] font-bold leading-snug">{a.title}</span>
               <span className="block text-[13px] font-semibold opacity-80">{a.body}</span>
             </button>
+            {speechSupported() && (
+              <button
+                type="button"
+                onClick={() => onSpeak(a)}
+                aria-label="Ouvir o aviso"
+                data-testid="alert-speak"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/10"
+              >
+                <Icon name="volume" size={16} />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onDismiss(a)}

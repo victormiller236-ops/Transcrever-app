@@ -3,6 +3,8 @@ import webpush from "web-push";
 export interface PushPayload {
   title: string;
   body: string;
+  /** Texto para leitura em voz alta (quando o app abre na frente) */
+  spoken?: string;
   url: string;
   tag: string;
   taskId?: string;
