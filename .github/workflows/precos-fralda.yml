@@ -1,0 +1,62 @@
+name: Preços de fralda
+
+on:
+  schedule:
+    - cron: "7 9 * * *" # todo dia às 06:07 de Brasília
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: precos-fralda
+  cancel-in-progress: false
+
+jobs:
+  buscar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90 # cada oferta é confirmada no carrinho, com pausa entre requisições
+    defaults:
+      run:
+        working-directory: precos-fralda
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Testes
+        run: python -m unittest discover -s tests
+
+      - name: Buscar preços
+        run: python -m precos_fralda --saida saida
+
+      - name: Resumo da execução
+        if: always()
+        run: |
+          if [ -f saida/relatorio.md ]; then cat saida/relatorio.md >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Publicar na issue "Preços de fralda"
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITULO: Preços de fralda
+        run: |
+          # Lista as issues abertas direto (a busca do GitHub demora a indexar issues novas)
+          numero=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 200 \
+            --json number,title --jq 'map(select(.title == env.TITULO))[0].number // empty')
+          if [ -z "$numero" ]; then
+            url=$(gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITULO" \
+              --body "Relatório diário gerado pelo workflow precos-fralda. Cada comentário é um dia.")
+            numero=${url##*/}
+          fi
+          gh issue comment "$numero" --repo "$GITHUB_REPOSITORY" --body-file saida/relatorio.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: precos-fralda-${{ github.run_id }}
+          path: precos-fralda/saida/
+          retention-days: 90

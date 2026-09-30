@@ -1,27 +1,33 @@
 import { prisma } from "@/lib/prisma";
-import { TranscreverClient } from "./TranscreverClient";
+import { DEFAULT_TIMEZONE } from "@/lib/datetime";
+import { taskToDTO } from "@/lib/tasks-shape";
+import { PautaApp } from "./PautaApp";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const transcriptions = await prisma.transcription.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+  const [tasks, transcriptions] = await Promise.all([
+    prisma.task.findMany({
+      orderBy: [{ done: "asc" }, { dueAt: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }],
+      take: 500,
+    }),
+    prisma.transcription.findMany({ orderBy: { createdAt: "desc" }, take: 50 }),
+  ]);
 
   return (
-    <main className="max-w-lg mx-auto w-full px-5 pb-10 flex-1 flex flex-col">
-      <TranscreverClient
-        initialTranscriptions={transcriptions.map((t) => ({
-          id: t.id,
-          filename: t.filename,
-          mimeType: t.mimeType,
-          status: t.status,
-          text: t.text,
-          errorMessage: t.errorMessage,
-          createdAt: t.createdAt.toISOString(),
-        }))}
-      />
-    </main>
+    <PautaApp
+      initialTasks={tasks.map((t) => taskToDTO(t, DEFAULT_TIMEZONE))}
+      serverTz={DEFAULT_TIMEZONE}
+      initialNow={new Date().toISOString()}
+      initialTranscriptions={transcriptions.map((t) => ({
+        id: t.id,
+        filename: t.filename,
+        mimeType: t.mimeType,
+        status: t.status,
+        text: t.text,
+        errorMessage: t.errorMessage,
+        createdAt: t.createdAt.toISOString(),
+      }))}
+    />
   );
 }

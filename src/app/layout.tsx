@@ -3,22 +3,32 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Transcrever",
-  description: "Transcreva áudio e vídeo em texto, direto pelo celular.",
-  manifest: "/manifest.json",
+  title: "MyDay",
+  description: "Fale suas tarefas, com dia e hora, e receba o aviso no celular.",
+  applicationName: "MyDay",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
-    title: "Transcrever",
+    statusBarStyle: "black-translucent",
+    title: "MyDay",
   },
+  formatDetection: { telephone: false },
   icons: {
-    icon: "/icon-192.png",
-    apple: "/apple-touch-icon.png",
+    icon: [
+      { url: "/icons/favicon-48.png", sizes: "48x48", type: "image/png" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/icons/apple-touch-icon.png",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#322a6b",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#141c3a" },
+    { media: "(prefers-color-scheme: dark)", color: "#0d1226" },
+  ],
+  viewportFit: "cover",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({

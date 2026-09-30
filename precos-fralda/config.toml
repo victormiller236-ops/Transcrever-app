@@ -1,0 +1,51 @@
+# Configuração do agente de preços de fralda.
+# Edite a seção [[produtos]] para as marcas (e, se quiser, o tamanho) que você compra.
+
+[geral]
+paginas = 40           # páginas de 10 resultados por busca, por loja (até 400 produtos)
+pausa_segundos = 3     # espera entre requisições (dobra a cada nova tentativa)
+tentativas = 4
+timeout_segundos = 30
+vendedores_terceiros = false  # false: só o preço da própria farmácia; true inclui vendedores parceiros do site
+top = 10               # quantas ofertas mostrar por produto e tamanho no relatório
+# Ofertas cujo nome contém qualquer um destes termos são sempre ignoradas.
+excluir = ["geriatric", "adulto", "roupa intima", "lenco", "pomada", "creme",
+           "fralda de pano", "absorvente", "trocador", "tapete", "piscina", "agua"]
+
+# Farmácias on-line na plataforma VTEX (testadas em execução real). Loja que falhar aparece em "Falhas" no
+# relatório, sem derrubar as demais.
+[[lojas]]
+nome = "Drogaria São Paulo"
+dominio = "www.drogariasaopaulo.com.br"
+
+[[lojas]]
+nome = "Drogarias Pacheco"
+dominio = "www.drogariaspacheco.com.br"
+
+[[lojas]]
+nome = "Pague Menos"
+dominio = "www.paguemenos.com.br"
+
+[[lojas]]
+nome = "Drogaria Venâncio"
+dominio = "www.drogariavenancio.com.br"
+
+[[lojas]]
+nome = "Drogaria Catarinense"
+dominio = "www.drogariacatarinense.com.br"
+
+# Cada produto é buscado em cada loja. Só entra no ranking a oferta cujo nome
+# contém TODOS os `termos` (palavras inteiras) e tem tamanho e quantidade de
+# fraldas legíveis no nome. `tamanhos` escolhe quais entram (RN, RN+, P, M, G,
+# XG, XXG, XXXG), cada um com seu próprio ranking; sem `tamanhos`, entram todos.
+[[produtos]]
+nome = "Pampers"
+busca = "fralda pampers"
+termos = ["pampers"]
+tamanhos = ["RN", "P"]
+
+[[produtos]]
+nome = "Mili"
+busca = "fralda mili"
+termos = ["mili"]
+tamanhos = ["RN", "P"]

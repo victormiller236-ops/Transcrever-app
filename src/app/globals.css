@@ -1,28 +1,41 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f3f2f8;
+  color-scheme: light dark;
+  --background: #f7f5ef;
   --surface: #ffffff;
-  --foreground: #322a6b;
-  --muted: #635f80;
-  --faint: #9491ab;
-  --line: #ddd9ea;
-  --color-primary: #322a6b;
-  --color-accent: #6d5bd0;
-  --color-danger: #a83f30;
+  --surface-2: #f0ede3;
+  --foreground: #141c3a;
+  --muted: #5d6484;
+  --faint: #8e93ad;
+  --line: #e6e1d3;
+  --color-primary: #141c3a;
+  --on-primary: #ffffff;
+  --color-accent: #f0a020;
+  --on-accent: #141c3a;
+  --color-teal: #0f9e8f;
+  --color-danger: #c2410c;
+  --shadow: 0 1px 2px rgba(20, 28, 58, 0.06), 0 8px 24px rgba(20, 28, 58, 0.07);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #14121f;
-    --surface: #1e1b2e;
-    --foreground: #b8b0f0;
-    --muted: #9d97b8;
-    --faint: #5f5a78;
-    --line: #2c2840;
-    --color-primary: #b8b0f0;
-    --color-accent: #9d8cf0;
-    --color-danger: #e0836f;
+    --background: #0d1226;
+    --surface: #161d3a;
+    --surface-2: #1d2547;
+    --foreground: #eef0fb;
+    --muted: #9aa3c7;
+    --faint: #6b7399;
+    --line: #262f59;
+    --color-primary: #f0b84a;
+    --on-primary: #141c3a;
+    --color-accent: #f0b84a;
+    --on-accent: #141c3a;
+    --color-teal: #2dd4bf;
+    --color-danger: #fb923c;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -38,8 +51,174 @@
   --color-danger: var(--color-danger);
 }
 
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+  font-family: "Inter", -apple-system, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  overscroll-behavior-y: none;
+}
+
+/* Em @layer base para não vencer as utilidades do Tailwind (cor, tamanho e peso da fonte). */
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---------- animações ---------- */
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+@keyframes check-pop {
+  0% {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+@keyframes ring-alert {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  20% {
+    transform: rotate(14deg);
+  }
+  40% {
+    transform: rotate(-12deg);
+  }
+  60% {
+    transform: rotate(8deg);
+  }
+  80% {
+    transform: rotate(-6deg);
+  }
+}
+
+.anim-sheet {
+  animation: sheet-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.anim-fade {
+  animation: fade-in 0.2s ease-out both;
+}
+.anim-toast {
+  animation: toast-in 0.22s ease-out both;
+}
+.anim-rise {
+  animation: rise 0.32s ease-out both;
+}
+.anim-check {
+  animation: check-pop 0.32s ease-out both;
+}
+.anim-bell {
+  animation: ring-alert 0.9s ease-in-out infinite;
+  transform-origin: 50% 0;
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--line) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+.mic-pulse::before,
+.mic-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--color-accent);
+  animation: pulse-ring 2.2s ease-out infinite;
+  z-index: -1;
+}
+.mic-pulse::after {
+  animation-delay: 1.1s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

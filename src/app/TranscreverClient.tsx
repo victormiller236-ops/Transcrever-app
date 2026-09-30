@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
 
-interface TranscriptionDTO {
+export interface TranscriptionDTO {
   id: string;
   filename: string;
   mimeType: string;
@@ -56,9 +56,23 @@ function formatDate(iso: string) {
 
 export function TranscreverClient({
   initialTranscriptions,
+  onExtract,
 }: {
   initialTranscriptions: TranscriptionDTO[];
+  onExtract?: (text: string) => Promise<void>;
 }) {
+  const [extractingId, setExtractingId] = useState<string | null>(null);
+
+  async function handleExtract(id: string, text: string) {
+    if (!onExtract || extractingId) return;
+    setExtractingId(id);
+    try {
+      await onExtract(text);
+    } finally {
+      setExtractingId(null);
+    }
+  }
+
   const [transcriptions, setTranscriptions] = useState(initialTranscriptions);
   const [file, setFile] = useState<File | null>(null);
   const [stage, setStage] = useState<Stage>("idle");
@@ -196,7 +210,7 @@ export function TranscreverClient({
       }, 1000);
     } catch {
       setErrorMessage(
-        "Não consegui acessar o microfone. Confira se deu permissão pro Safari nas Configurações do iPhone."
+        "Não consegui acessar o microfone. Confira se o navegador tem permissão de microfone para este site."
       );
       setStage("error");
     }
@@ -244,7 +258,7 @@ export function TranscreverClient({
 
   return (
     <div className="flex flex-col flex-1">
-      <header className="pt-6 pb-4">
+      <header className="pt-[max(24px,calc(var(--safe-top)+8px))] pb-4">
         <h1 className="text-3xl font-bold tracking-tight">Transcrever</h1>
         <p className="text-[15px] text-[var(--muted)] mt-1">
           Selecione um áudio ou vídeo, ou fale direto no microfone.
@@ -346,6 +360,16 @@ export function TranscreverClient({
               Salvar .txt
             </button>
           </div>
+          {onExtract && (
+            <button
+              type="button"
+              onClick={() => handleExtract(current.id, current.text!)}
+              disabled={extractingId !== null}
+              className="mt-2 w-full rounded-lg bg-[var(--color-accent)] py-3 text-sm font-bold text-[var(--on-accent)] disabled:opacity-60"
+            >
+              {extractingId === current.id ? "Lendo o texto…" : "✨ Criar tarefas a partir deste texto"}
+            </button>
+          )}
         </section>
       )}
 
@@ -367,7 +391,9 @@ export function TranscreverClient({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{t.filename}</p>
-                    <p className="text-xs text-[var(--faint)]">{formatDate(t.createdAt)}</p>
+                    <p className="text-xs text-[var(--faint)]" suppressHydrationWarning>
+                      {formatDate(t.createdAt)}
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -379,7 +405,19 @@ export function TranscreverClient({
                   </button>
                 </div>
                 {t.status === "completed" && t.text ? (
-                  <p className="mt-2 line-clamp-2 text-sm text-[var(--muted)]">{t.text}</p>
+                  <>
+                    <p className="mt-2 line-clamp-2 text-sm text-[var(--muted)]">{t.text}</p>
+                    {onExtract && (
+                      <button
+                        type="button"
+                        onClick={() => handleExtract(t.id, t.text!)}
+                        disabled={extractingId !== null}
+                        className="mt-2 text-sm font-semibold text-[var(--color-accent)] disabled:opacity-60"
+                      >
+                        {extractingId === t.id ? "Lendo o texto…" : "✨ Criar tarefas"}
+                      </button>
+                    )}
+                  </>
                 ) : (
                   <p className="mt-2 text-sm text-[var(--color-danger)]">
                     {t.errorMessage ?? "Erro na transcrição."}
