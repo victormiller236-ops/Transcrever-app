@@ -57,7 +57,8 @@ class Http:
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     return json.loads(resp.read().decode("utf-8"))
             except urllib.error.HTTPError as e:
-                ultimo_erro = e
+                corpo_erro = e.read(300).decode("utf-8", "replace").replace("\n", " ").strip()
+                ultimo_erro = f"{e} — {corpo_erro}" if corpo_erro else e
                 # 4xx (exceto 429) não melhora tentando de novo
                 if 400 <= e.code < 500 and e.code != 429:
                     break
