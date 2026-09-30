@@ -66,7 +66,14 @@ def extrair_quantidade(nome: str) -> int | None:
 
 
 def corresponde(nome: str, termos: list[str], excluir: list[str]) -> bool:
+    """`termos` casam como palavras inteiras ("mili" não casa com "familia");
+    `excluir` casa como início de palavra ("geriatric" pega "geriatrica")."""
     n = normalizar(nome)
-    if any(normalizar(t) in n for t in excluir):
+
+    def tem(termo: str, palavra_inteira: bool) -> bool:
+        fim = r"\b" if palavra_inteira else ""
+        return re.search(r"\b" + re.escape(normalizar(termo)) + fim, n) is not None
+
+    if any(tem(t, False) for t in excluir):
         return False
-    return all(normalizar(t) in n for t in termos)
+    return all(tem(t, True) for t in termos)

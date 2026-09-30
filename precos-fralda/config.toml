@@ -1,12 +1,12 @@
 # Configuração do agente de preços de fralda.
-# Edite a seção [[produtos]] para a marca/linha/tamanho que você realmente compra.
+# Edite a seção [[produtos]] para as marcas (e, se quiser, o tamanho) que você compra.
 
 [geral]
-paginas = 3            # páginas de 50 resultados por busca, por loja
+paginas = 6            # páginas de 50 resultados por busca, por loja
 pausa_segundos = 3     # espera entre requisições (dobra a cada nova tentativa)
 tentativas = 4
 timeout_segundos = 30
-top = 10               # quantas ofertas mostrar por produto no relatório
+top = 10               # quantas ofertas mostrar por produto e tamanho no relatório
 # Ofertas cujo nome contém qualquer um destes termos são sempre ignoradas.
 excluir = ["geriatric", "adulto", "roupa intima", "lenco", "pomada", "creme",
            "fralda de pano", "absorvente", "trocador", "tapete", "piscina", "agua"]
@@ -34,22 +34,15 @@ nome = "Drogaria Araujo"
 dominio = "www.araujo.com.br"
 
 # Cada produto é buscado em cada loja. Só entra no ranking a oferta cujo nome
-# contém TODOS os `termos`, é do `tamanho` indicado (RN, P, M, G, XG, XXG, XXXG)
-# e tem a quantidade de fraldas legível no nome.
+# contém TODOS os `termos` (palavras inteiras) e tem tamanho e quantidade de
+# fraldas legíveis no nome. Sem `tamanho`, o relatório traz um ranking por
+# tamanho; com `tamanho = "G"` (RN, P, M, G, XG, XXG, XXXG), só aquele.
 [[produtos]]
-nome = "Pampers Confort Sec — G"
-busca = "fralda pampers confort sec g"
-termos = ["pampers", "confort sec"]
-tamanho = "G"
+nome = "Pampers"
+busca = "fralda pampers"
+termos = ["pampers"]
 
 [[produtos]]
-nome = "Huggies Tripla Proteção — G"
-busca = "fralda huggies tripla protecao g"
-termos = ["huggies", "tripla protecao"]
-tamanho = "G"
-
-[[produtos]]
-nome = "MamyPoko — G"
-busca = "fralda mamypoko g"
-termos = ["mamypoko"]
-tamanho = "G"
+nome = "Mili"
+busca = "fralda mili"
+termos = ["mili"]
