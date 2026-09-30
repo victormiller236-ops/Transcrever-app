@@ -250,6 +250,9 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
 
   useEffect(() => {
     const check = () => {
+      // Com a aba escondida/tela travada ninguém vê o alerta local; espera
+      // ficar visível de novo em vez de bipar no vazio e marcar como avisado.
+      if (document.visibilityState !== "visible") return;
       const now = Date.now();
       for (const t of tasksRef.current) {
         if (t.done || !t.dueAt) continue;
@@ -270,7 +273,11 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
     };
     check();
     const i = window.setInterval(check, 15_000);
-    return () => window.clearInterval(i);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      window.clearInterval(i);
+      document.removeEventListener("visibilitychange", check);
+    };
   }, [pushAlert, tasks]);
 
   // Push que chega com o app aberto: o service worker repassa para cá em vez de notificar.
