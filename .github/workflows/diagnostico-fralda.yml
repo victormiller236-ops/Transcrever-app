@@ -2,6 +2,9 @@ name: Diagnóstico das farmácias (fralda)
 
 on:
   workflow_dispatch:
+  push: # temporário: roda ao enviar a branch de trabalho; remover antes do merge
+    branches: [claude/diaper-price-agent-7cqfh0]
+    paths: [".github/workflows/diagnostico-fralda.yml", "precos-fralda/diagnostico.py"]
 
 permissions:
   contents: read
