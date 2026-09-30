@@ -13,6 +13,8 @@ from pathlib import Path
 
 from . import texto, vtex
 
+ORDEM_TAMANHOS = ["RN", "P", "M", "G", "XG", "XXG", "XXXG"]
+
 
 @dataclass
 class Resultado:
@@ -36,7 +38,8 @@ def coletar(config: dict, log) -> tuple[dict, list[str], dict]:
         timeout=geral.get("timeout_segundos", 30),
     )
     excluir_global = geral.get("excluir", [])
-    resultados = {p["nome"]: [] for p in config["produtos"]}
+    # resultados[produto][tamanho] = [Resultado, ...]
+    resultados = {p["nome"]: {} for p in config["produtos"]}
     descartes = {p["nome"]: 0 for p in config["produtos"]}
     falhas = []
 
@@ -65,7 +68,7 @@ def coletar(config: dict, log) -> tuple[dict, list[str], dict]:
                     descartes[produto["nome"]] += 1
                     log(f"  descartado (tamanho/quantidade ambíguos): {oferta.nome}")
                     continue
-                if tamanho != produto["tamanho"].upper():
+                if "tamanho" in produto and tamanho != produto["tamanho"].upper():
                     continue
                 try:
                     oferta.preco_confirmado = vtex.confirmar_preco(http, loja["dominio"], oferta)
@@ -75,7 +78,7 @@ def coletar(config: dict, log) -> tuple[dict, list[str], dict]:
                     if oferta.preco_confirmado is None:
                         log(f"  indisponível no checkout: {oferta.nome}")
                         continue
-                resultados[produto["nome"]].append(Resultado(oferta, quantidade))
+                resultados[produto["nome"]].setdefault(tamanho, []).append(Resultado(oferta, quantidade))
     return resultados, falhas, descartes
 
 
@@ -88,12 +91,16 @@ def relatorio_md(resultados, falhas, descartes, config, agora) -> str:
         "⚠ = só preço de catálogo (simulação falhou)."
     )
     linhas.append("")
-    for nome, lista in resultados.items():
+    for nome, por_tamanho in resultados.items():
         linhas.append(f"## {nome}")
         linhas.append("")
-        if not lista:
+        if not por_tamanho:
             linhas.append("_Nenhuma oferta encontrada._")
-        else:
+            linhas.append("")
+        for tamanho in sorted(por_tamanho, key=ORDEM_TAMANHOS.index):
+            lista = por_tamanho[tamanho]
+            linhas.append(f"### Tamanho {tamanho}")
+            linhas.append("")
             linhas.append("| # | Loja | Produto | Fraldas | Preço | R$/fralda | Conf. |")
             linhas.append("|---|---|---|---:|---:|---:|---|")
             for i, r in enumerate(sorted(lista, key=lambda r: r.preco_por_fralda)[:top], 1):
@@ -104,13 +111,13 @@ def relatorio_md(resultados, falhas, descartes, config, agora) -> str:
                     f"| {i} | {o.loja}{vendedor} | [{o.nome}]({o.url}) | {r.quantidade} | "
                     f"{reais(o.preco)} | {reais(r.preco_por_fralda)} | {marca} |"
                 )
-        if descartes[nome]:
             linhas.append("")
+        if descartes[nome]:
             linhas.append(
                 f"_{descartes[nome]} oferta(s) ignoradas porque o nome não deixa claro o tamanho "
                 "ou a quantidade (kits, combos, tamanhos combinados)._"
             )
-        linhas.append("")
+            linhas.append("")
     if falhas:
         linhas.append("## Falhas")
         linhas.append("")
@@ -123,17 +130,18 @@ def salvar_csv(caminho: Path, resultados, agora):
     with caminho.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(
-            ["data", "produto", "loja", "vendedor", "nome", "fraldas", "preco",
+            ["data", "produto", "tamanho", "loja", "vendedor", "nome", "fraldas", "preco",
              "preco_confirmado", "preco_por_fralda", "url"]
         )
-        for nome, lista in resultados.items():
-            for r in sorted(lista, key=lambda r: r.preco_por_fralda):
-                o = r.oferta
-                w.writerow(
-                    [agora.isoformat(timespec="minutes"), nome, o.loja, o.seller_nome, o.nome,
-                     r.quantidade, f"{o.preco:.2f}", "sim" if o.preco_confirmado is not None else "nao",
-                     f"{r.preco_por_fralda:.4f}", o.url]
-                )
+        for nome, por_tamanho in resultados.items():
+            for tamanho, lista in por_tamanho.items():
+                for r in sorted(lista, key=lambda r: r.preco_por_fralda):
+                    o = r.oferta
+                    w.writerow(
+                        [agora.isoformat(timespec="minutes"), nome, tamanho, o.loja, o.seller_nome, o.nome,
+                         r.quantidade, f"{o.preco:.2f}", "sim" if o.preco_confirmado is not None else "nao",
+                         f"{r.preco_por_fralda:.4f}", o.url]
+                    )
 
 
 def main() -> int:
@@ -153,7 +161,7 @@ def main() -> int:
     salvar_csv(args.saida / "precos.csv", resultados, agora)
     print(md)
 
-    lojas_ok = {r.oferta.loja for lista in resultados.values() for r in lista}
+    lojas_ok = {r.oferta.loja for t in resultados.values() for lista in t.values() for r in lista}
     if not lojas_ok:
         log("Nenhuma loja retornou ofertas válidas.")
         return 1

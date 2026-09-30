@@ -7,8 +7,10 @@ frete.
 ## Como funciona
 
 1. Para cada loja × produto, consulta o catálogo público da loja (API VTEX).
-2. Mantém só ofertas disponíveis cujo nome tem todos os `termos`, é do
-   `tamanho` pedido e tem a quantidade de fraldas legível no nome. Kits,
+2. Mantém só ofertas disponíveis cujo nome tem todos os `termos` e tem o
+   tamanho e a quantidade de fraldas legíveis no nome. Sem `tamanho` no
+   produto, o relatório traz um ranking separado por tamanho; com `tamanho`,
+   só aquele. Kits,
    combos e tamanhos combinados ("M/G") são descartados e contados no
    relatório — preferimos deixar de fora a calcular preço por fralda errado.
 3. Confirma cada preço numa simulação de carrinho da própria loja, sem CEP.

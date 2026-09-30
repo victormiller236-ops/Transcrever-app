@@ -49,6 +49,13 @@ class TestCorresponde(unittest.TestCase):
         self.assertFalse(texto.corresponde("Fralda Huggies Supreme Care G", ["huggies", "tripla protecao"], []))
         self.assertFalse(texto.corresponde("Lenço Umedecido Huggies", ["huggies"], ["lenco"]))
 
+    def test_termo_e_palavra_inteira(self):
+        self.assertTrue(texto.corresponde("Fralda Mili Love & Care G 64 un", ["mili"], []))
+        self.assertFalse(texto.corresponde("Fralda Família Econômica G 64 un", ["mili"], []))
+
+    def test_exclusao_por_inicio_de_palavra(self):
+        self.assertFalse(texto.corresponde("Fralda Geriátrica Mili G 8 un", ["mili"], ["geriatric"]))
+
 
 class TestVtex(unittest.TestCase):
     CATALOGO = [
