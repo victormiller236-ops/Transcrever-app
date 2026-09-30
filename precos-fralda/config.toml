@@ -35,14 +35,16 @@ dominio = "www.araujo.com.br"
 
 # Cada produto é buscado em cada loja. Só entra no ranking a oferta cujo nome
 # contém TODOS os `termos` (palavras inteiras) e tem tamanho e quantidade de
-# fraldas legíveis no nome. Sem `tamanho`, o relatório traz um ranking por
-# tamanho; com `tamanho = "G"` (RN, P, M, G, XG, XXG, XXXG), só aquele.
+# fraldas legíveis no nome. `tamanhos` escolhe quais entram (RN, RN+, P, M, G,
+# XG, XXG, XXXG), cada um com seu próprio ranking; sem `tamanhos`, entram todos.
 [[produtos]]
 nome = "Pampers"
 busca = "fralda pampers"
 termos = ["pampers"]
+tamanhos = ["RN", "P"]
 
 [[produtos]]
 nome = "Mili"
 busca = "fralda mili"
 termos = ["mili"]
+tamanhos = ["RN", "P"]

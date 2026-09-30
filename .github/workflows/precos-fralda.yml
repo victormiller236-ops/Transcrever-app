@@ -16,7 +16,7 @@ concurrency:
 jobs:
   buscar:
     runs-on: ubuntu-latest
-    timeout-minutes: 150 # sem tamanho definido, cada oferta é confirmada com pausa entre requisições
+    timeout-minutes: 90 # cada oferta é confirmada no carrinho, com pausa entre requisições
     defaults:
       run:
         working-directory: precos-fralda

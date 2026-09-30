@@ -10,6 +10,7 @@ import unicodedata
 
 TAMANHOS = {
     "rn": "RN",
+    "rnplus": "RN+",
     "p": "P",
     "m": "M",
     "g": "G",
@@ -41,6 +42,9 @@ def normalizar(texto: str) -> str:
 
 def extrair_tamanho(nome: str) -> str | None:
     n = normalizar(nome)
+    n = re.sub(r"\brecem[\s-]*nascidos?\b", " rn ", n)
+    # RN+ é outro tamanho (entre RN e P), não pode cair junto com RN
+    n = re.sub(r"\brn\s*(?:\+|plus\b)", " rnplus ", n)
     if _RE_TAMANHO_COMBINADO.search(n):
         return None
     encontrados = {TAMANHOS[m] for m in _RE_TAMANHO.findall(n)}

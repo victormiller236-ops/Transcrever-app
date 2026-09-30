@@ -67,7 +67,9 @@ class Http:
         raise RuntimeError(f"{url}: {ultimo_erro}")
 
 
-def buscar(http: Http, loja: str, dominio: str, termo: str, paginas: int) -> list[Oferta]:
+def buscar(http: Http, loja: str, dominio: str, termo: str, paginas: int) -> tuple[list[Oferta], bool]:
+    """Devolve (ofertas, truncado). truncado=True quando o limite de páginas
+    foi atingido e pode haver mais produtos que não foram lidos."""
     ofertas = []
     for pagina in range(paginas):
         inicio = pagina * TAMANHO_PAGINA
@@ -77,8 +79,8 @@ def buscar(http: Http, loja: str, dominio: str, termo: str, paginas: int) -> lis
         produtos = http.json(f"https://{dominio}/api/catalog_system/pub/products/search?{params}")
         ofertas.extend(ofertas_do_catalogo(loja, produtos))
         if len(produtos) < TAMANHO_PAGINA:
-            break
-    return ofertas
+            return ofertas, False
+    return ofertas, True
 
 
 def ofertas_do_catalogo(loja: str, produtos: list[dict]) -> list[Oferta]:

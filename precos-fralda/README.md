@@ -1,16 +1,16 @@
 # Agente de preços de fralda
 
 Todo dia busca, nas farmácias on-line configuradas, o preço das fraldas
-listadas em `config.toml` e publica um ranking por **preço por fralda**, sem
+Pampers e Mili, tamanhos RN e P (editável em `config.toml`), e publica um ranking por **preço por fralda**, sem
 frete.
 
 ## Como funciona
 
 1. Para cada loja × produto, consulta o catálogo público da loja (API VTEX).
 2. Mantém só ofertas disponíveis cujo nome tem todos os `termos` e tem o
-   tamanho e a quantidade de fraldas legíveis no nome. Sem `tamanho` no
-   produto, o relatório traz um ranking separado por tamanho; com `tamanho`,
-   só aquele. Kits,
+   tamanho e a quantidade de fraldas legíveis no nome. Entram só os
+   `tamanhos` configurados (hoje RN e P), cada um com seu próprio ranking.
+   "Recém-nascido" por extenso conta como RN; RN+ é um tamanho à parte. Kits,
    combos e tamanhos combinados ("M/G") são descartados e contados no
    relatório — preferimos deixar de fora a calcular preço por fralda errado.
 3. Confirma cada preço numa simulação de carrinho da própria loja, sem CEP.
