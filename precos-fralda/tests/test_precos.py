@@ -20,6 +20,15 @@ class TestTamanho(unittest.TestCase):
         self.assertIsNone(texto.extrair_tamanho("Fralda Pampers G e XG 60 unidades"))
         self.assertIsNone(texto.extrair_tamanho("Fralda Pampers Confort Sec 60 unidades"))
 
+    def test_recem_nascido_e_rn_plus(self):
+        self.assertEqual(texto.extrair_tamanho("Fralda Pampers Premium Care Recém-Nascido 36 un"), "RN")
+        self.assertEqual(texto.extrair_tamanho("Fralda Mili Love & Care Recém Nascido c/ 20"), "RN")
+        self.assertEqual(texto.extrair_tamanho("Fralda Pampers Premium Care RN+ 34 unidades"), "RN+")
+        self.assertEqual(texto.extrair_tamanho("Fralda Pampers Premium Care RN Plus 34 unidades"), "RN+")
+        self.assertEqual(texto.extrair_tamanho("Fralda Pampers Recém-Nascido Premium Care RN+ 36 Unidades"), "RN+")
+        self.assertEqual(texto.extrair_tamanho("Fralda Pampers Recem Nascido Tamanho Rn+ 36 Unidades"), "RN+")
+        self.assertIsNone(texto.extrair_tamanho("Fralda Mili RN/P 20 unidades"))
+
     def test_gramas_nao_e_tamanho(self):
         self.assertIsNone(texto.extrair_tamanho("Pomada 45g"))
 
@@ -77,6 +86,12 @@ class TestVtex(unittest.TestCase):
             ],
         }
     ]
+
+    def test_url_de_busca(self):
+        self.assertEqual(
+            vtex.url_busca("www.loja.com.br", "fralda pampers", 20),
+            "https://www.loja.com.br/api/catalog_system/pub/products/search?ft=fralda%20pampers&_from=20&_to=29",
+        )
 
     def test_ofertas_ignoram_indisponiveis(self):
         ofertas = vtex.ofertas_do_catalogo("Loja", self.CATALOGO)

@@ -17,7 +17,7 @@ import urllib.request
 from dataclasses import dataclass
 
 USER_AGENT = "Mozilla/5.0 (compatible; precos-fralda/1.0; consulta diaria de precos)"
-TAMANHO_PAGINA = 50  # máximo aceito pela API de busca da VTEX
+TAMANHO_PAGINA = 10  # 50 (o máximo documentado) deu HTTP 400 nas lojas reais; 10 foi verificado em todas
 
 
 @dataclass
@@ -57,7 +57,8 @@ class Http:
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     return json.loads(resp.read().decode("utf-8"))
             except urllib.error.HTTPError as e:
-                ultimo_erro = e
+                corpo_erro = e.read(300).decode("utf-8", "replace").replace("\n", " ").strip()
+                ultimo_erro = f"{e} — {corpo_erro}" if corpo_erro else e
                 # 4xx (exceto 429) não melhora tentando de novo
                 if 400 <= e.code < 500 and e.code != 429:
                     break
@@ -66,18 +67,25 @@ class Http:
         raise RuntimeError(f"{url}: {ultimo_erro}")
 
 
-def buscar(http: Http, loja: str, dominio: str, termo: str, paginas: int) -> list[Oferta]:
+def url_busca(dominio: str, termo: str, inicio: int) -> str:
+    # %20 (e não "+") para o espaço: é o formato verificado nas lojas reais
+    ft = urllib.parse.quote(termo, safe="")
+    return (
+        f"https://{dominio}/api/catalog_system/pub/products/search"
+        f"?ft={ft}&_from={inicio}&_to={inicio + TAMANHO_PAGINA - 1}"
+    )
+
+
+def buscar(http: Http, loja: str, dominio: str, termo: str, paginas: int) -> tuple[list[Oferta], bool]:
+    """Devolve (ofertas, truncado). truncado=True quando o limite de páginas
+    foi atingido e pode haver mais produtos que não foram lidos."""
     ofertas = []
     for pagina in range(paginas):
-        inicio = pagina * TAMANHO_PAGINA
-        params = urllib.parse.urlencode(
-            {"ft": termo, "_from": inicio, "_to": inicio + TAMANHO_PAGINA - 1}
-        )
-        produtos = http.json(f"https://{dominio}/api/catalog_system/pub/products/search?{params}")
+        produtos = http.json(url_busca(dominio, termo, pagina * TAMANHO_PAGINA))
         ofertas.extend(ofertas_do_catalogo(loja, produtos))
         if len(produtos) < TAMANHO_PAGINA:
-            break
-    return ofertas
+            return ofertas, False
+    return ofertas, True
 
 
 def ofertas_do_catalogo(loja: str, produtos: list[dict]) -> list[Oferta]:

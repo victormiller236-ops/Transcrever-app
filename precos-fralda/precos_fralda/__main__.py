@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import texto, vtex
 
-ORDEM_TAMANHOS = ["RN", "P", "M", "G", "XG", "XXG", "XXXG"]
+ORDEM_TAMANHOS = ["RN", "RN+", "P", "M", "G", "XG", "XXG", "XXXG"]
 
 
 @dataclass
@@ -39,7 +39,10 @@ def coletar(config: dict, log) -> tuple[dict, list[str], dict]:
     )
     excluir_global = geral.get("excluir", [])
     # resultados[produto][tamanho] = [Resultado, ...]
-    resultados = {p["nome"]: {} for p in config["produtos"]}
+    resultados = {
+        p["nome"]: {t.upper(): [] for t in p.get("tamanhos") or ([p["tamanho"]] if "tamanho" in p else [])}
+        for p in config["produtos"]
+    }
     descartes = {p["nome"]: 0 for p in config["produtos"]}
     falhas = []
 
@@ -47,28 +50,38 @@ def coletar(config: dict, log) -> tuple[dict, list[str], dict]:
         for produto in config["produtos"]:
             termos = produto.get("termos", [])
             excluir = excluir_global + produto.get("excluir", [])
+            tamanhos = produto.get("tamanhos") or ([produto["tamanho"]] if "tamanho" in produto else None)
+            tamanhos = {t.upper() for t in tamanhos} if tamanhos else None
             try:
-                ofertas = vtex.buscar(
+                ofertas, truncado = vtex.buscar(
                     http, loja["nome"], loja["dominio"], produto["busca"], geral.get("paginas", 3)
                 )
             except RuntimeError as e:
                 falhas.append(f"{loja['nome']} / {produto['nome']}: busca falhou ({e})")
                 continue
             log(f"{loja['nome']} / {produto['nome']}: {len(ofertas)} ofertas no catálogo")
+            if truncado:
+                falhas.append(
+                    f"{loja['nome']} / {produto['nome']}: a busca atingiu o limite de páginas; "
+                    "pode haver ofertas não lidas (aumente `paginas` no config.toml)"
+                )
 
             vistos = set()
             for oferta in ofertas:
                 chave = (oferta.sku_id, oferta.seller_id)
                 if chave in vistos or not texto.corresponde(oferta.nome, termos, excluir):
                     continue
+                # seller "1" é a própria loja; os demais são vendedores parceiros (marketplace)
+                if oferta.seller_id != "1" and not geral.get("vendedores_terceiros", False):
+                    continue
                 vistos.add(chave)
                 tamanho = texto.extrair_tamanho(oferta.nome)
+                if tamanho is not None and tamanhos and tamanho not in tamanhos:
+                    continue
                 quantidade = texto.extrair_quantidade(oferta.nome)
                 if tamanho is None or quantidade is None:
                     descartes[produto["nome"]] += 1
                     log(f"  descartado (tamanho/quantidade ambíguos): {oferta.nome}")
-                    continue
-                if "tamanho" in produto and tamanho != produto["tamanho"].upper():
                     continue
                 try:
                     oferta.preco_confirmado = vtex.confirmar_preco(http, loja["dominio"], oferta)
@@ -101,6 +114,10 @@ def relatorio_md(resultados, falhas, descartes, config, agora) -> str:
             lista = por_tamanho[tamanho]
             linhas.append(f"### Tamanho {tamanho}")
             linhas.append("")
+            if not lista:
+                linhas.append("_Nenhuma oferta encontrada._")
+                linhas.append("")
+                continue
             linhas.append("| # | Loja | Produto | Fraldas | Preço | R$/fralda | Conf. |")
             linhas.append("|---|---|---|---:|---:|---:|---|")
             for i, r in enumerate(sorted(lista, key=lambda r: r.preco_por_fralda)[:top], 1):
