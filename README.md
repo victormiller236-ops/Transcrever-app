@@ -73,10 +73,13 @@ Dica: “avisar 10 min antes” compensa qualquer atraso do disparador.
 
 ### 3. Proteção da Vercel
 
-Se o projeto tem **Vercel Authentication** ligada, o Chrome do Android **não consegue baixar o
-manifest nem o service worker** (vêm sem cookie) e o app não instala; o cron também leva 401.
-O app já tem login próprio por senha, então desligue em *Settings → Deployment Protection*
-(ou use um domínio próprio, que fica fora da proteção). Para manter a proteção só no cron, crie um
+Se **Vercel Authentication** estiver ligada para o endereço que você usa, o Chrome do Android **não
+consegue baixar o manifest nem o service worker** (eles vêm sem cookie, e a Vercel responde com um
+redirecionamento para o login dela): o app não instala e o cron leva 401. Os endereços de **preview**
+(de branches) ficam sempre protegidos, então teste a instalação no endereço de **produção**.
+Como checar: abra o endereço numa aba anônima do Chrome; se aparecer o login da Vercel, está bloqueado.
+O app já tem login próprio por senha, então pode desligar em *Settings → Deployment Protection*
+(ou usar um domínio próprio). Para manter a proteção e deixar só o cron passar, crie um
 *Protection Bypass for Automation* e guarde como secret `VERCEL_BYPASS`.
 
 ### 4. Instalar no Android
