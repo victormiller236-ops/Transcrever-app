@@ -447,8 +447,9 @@ describe("lembretes: o que o cron dispara", () => {
     expect(r.data).toMatchObject({ due: 1, sent: 1, failed: 0 });
     expect(stack.push.calls).toHaveLength(1);
     const payload = decryptPush(sub, stack.push.calls[0].body) as Record<string, unknown>;
-    expect(payload).toMatchObject({ title: "Ligar para o banco", tag: `task-${venceu.id}`, taskId: venceu.id, url: `/?task=${venceu.id}`, actions: true });
+    expect(payload).toMatchObject({ title: "Ligar para o banco", tag: `task-${venceu.id}`, taskId: venceu.id, url: `/?task=${venceu.id}&speak=1`, actions: true });
     expect(payload.body).toMatch(/^Agora · \d{2}:\d{2}$/);
+    expect(payload.spoken).toBe("Lembrete: Ligar para o banco. É agora.");
 
     // segunda rodada: nada de aviso repetido
     stack.push.reset();

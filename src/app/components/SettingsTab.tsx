@@ -12,6 +12,13 @@ import {
   sendTestPush,
   type PushState,
 } from "@/lib/pwa";
+import { isNativeApp, nativeReminders, type NativeStatus } from "@/lib/native";
+import {
+  getSpeakEnabled,
+  setSpeakEnabled,
+  speak,
+  speechSupported,
+} from "@/lib/speech";
 import { Icon, Logo, useToast } from "./ui";
 
 export interface InstallPromptEvent extends Event {
@@ -19,7 +26,15 @@ export interface InstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-function Card({ title, icon, children }: { title: string; icon: React.ComponentProps<typeof Icon>["name"]; children: React.ReactNode }) {
+function Card({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: React.ComponentProps<typeof Icon>["name"];
+  children: React.ReactNode;
+}) {
   return (
     <section className="rounded-3xl bg-[var(--surface)] p-5 shadow-[var(--shadow)]">
       <h2 className="mb-3 flex items-center gap-2 text-[17px] font-bold">
@@ -47,6 +62,10 @@ export function SettingsTab({
   const [serverReady, setServerReady] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [standalone, setStandalone] = useState(false);
+  const [speakOn, setSpeakOn] = useState(true);
+  const [canSpeak, setCanSpeak] = useState(false);
+  const [native, setNative] = useState(false);
+  const [nativeStatus, setNativeStatus] = useState<NativeStatus | null>(null);
 
   const refresh = useCallback(async () => {
     setPush(await getPushState());
@@ -57,11 +76,29 @@ export function SettingsTab({
     /* eslint-disable react-hooks/set-state-in-effect */
     void refresh();
     setStandalone(isStandalone());
+    setSpeakOn(getSpeakEnabled());
+    setCanSpeak(speechSupported());
+    setNative(isNativeApp());
+    void nativeReminders()?.status().then(setNativeStatus).catch(() => {});
     /* eslint-enable react-hooks/set-state-in-effect */
     api("/api/push/key")
       .then(() => setServerReady(true))
-      .catch((e) => setServerReady(e instanceof ApiError && e.status === 503 ? false : null));
+      .catch((e) =>
+        setServerReady(
+          e instanceof ApiError && e.status === 503 ? false : null,
+        ),
+      );
   }, [refresh]);
+
+  // No app Android o número de lembretes agendados muda com as tarefas: mantém o cartão atualizado.
+  useEffect(() => {
+    const api = nativeReminders();
+    if (!api) return;
+    const timer = window.setInterval(() => {
+      void api.status().then(setNativeStatus).catch(() => {});
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, []);
 
   async function toggle() {
     setBusy(true);
@@ -71,11 +108,21 @@ export function SettingsTab({
         toast.show("Avisos desligados neste aparelho.");
       } else {
         const state = await enablePush();
-        if (state === "on") toast.show("Avisos ligados. Vou te chamar na hora certa.", { tone: "success" });
-        else if (state === "denied") toast.show("Permissão negada. Libere as notificações nas configurações do site.", { tone: "error", ms: 6000 });
+        if (state === "on")
+          toast.show("Avisos ligados. Vou te chamar na hora certa.", {
+            tone: "success",
+          });
+        else if (state === "denied")
+          toast.show(
+            "Permissão negada. Libere as notificações nas configurações do site.",
+            { tone: "error", ms: 6000 },
+          );
       }
     } catch (e) {
-      toast.show(e instanceof Error ? e.message : "Não consegui ligar os avisos.", { tone: "error", ms: 5000 });
+      toast.show(
+        e instanceof Error ? e.message : "Não consegui ligar os avisos.",
+        { tone: "error", ms: 5000 },
+      );
     } finally {
       await refresh();
       setBusy(false);
@@ -88,7 +135,10 @@ export function SettingsTab({
       await sendTestPush();
       toast.show("Aviso de teste enviado. Olhe a barra de notificações.");
     } catch (e) {
-      toast.show(e instanceof Error ? e.message : "Falhou.", { tone: "error", ms: 5000 });
+      toast.show(e instanceof Error ? e.message : "Falhou.", {
+        tone: "error",
+        ms: 5000,
+      });
     } finally {
       setBusy(false);
     }
@@ -101,7 +151,8 @@ export function SettingsTab({
     if (choice.outcome === "accepted") onInstalled();
   }
 
-  const pushUnsupported = push === "unsupported" || (!pushSupported() && push !== "loading");
+  const pushUnsupported =
+    push === "unsupported" || (!pushSupported() && push !== "loading");
 
   return (
     <div className="flex flex-col gap-4 pt-2" data-testid="settings">
@@ -109,87 +160,209 @@ export function SettingsTab({
         <Logo size={64} />
         <div>
           <h1 className="text-[26px] font-bold tracking-tight">MyDay</h1>
-          <p className="text-[14px] text-[var(--muted)]">Tarefas por voz, com aviso na hora certa.</p>
+          <p className="text-[14px] text-[var(--muted)]">
+            Tarefas por voz, com aviso na hora certa.
+          </p>
         </div>
       </div>
 
-      <Card title="Avisos no celular" icon="bell">
-        {pushUnsupported ? (
-          <p className="text-[14px] leading-relaxed text-[var(--muted)]">
-            Este navegador não recebe avisos. No Android, use o Chrome e instale o app (abaixo).
+      {native && (
+        <Card title="Alarmes do aparelho" icon="bell">
+          <p
+            className="mb-4 text-[14px] leading-relaxed text-[var(--muted)]"
+            data-testid="native-status"
+          >
+            No app Android, cada tarefa com hora vira um alarme do próprio
+            celular: toca, vibra e lê o lembrete em voz alta, com a tela apagada
+            e o app fechado.{" "}
+            {nativeStatus
+              ? `${nativeStatus.scheduled} ${nativeStatus.scheduled === 1 ? "lembrete agendado" : "lembretes agendados"}.`
+              : ""}
           </p>
-        ) : serverReady === false ? (
-          <p className="text-[14px] leading-relaxed text-[var(--muted)]">
-            O servidor ainda não tem as chaves de aviso (VAPID). Veja o passo a passo no README, seção “Avisos”.
-          </p>
-        ) : (
-          <>
-            <p className="mb-4 text-[14px] leading-relaxed text-[var(--muted)]">
-              {push === "on"
-                ? "Ligados neste aparelho. Você recebe o aviso mesmo com o app fechado."
-                : push === "denied"
-                  ? "Bloqueados. No Chrome: cadeado ao lado do endereço → Permissões → Notificações → Permitir."
-                  : "Ligue para ser avisado no horário das suas tarefas, mesmo com o app fechado."}
+          {nativeStatus && !nativeStatus.notifications && (
+            <p className="mb-3 rounded-xl bg-[var(--surface-2)] px-3 py-2 text-[13px] font-semibold text-[var(--color-danger)]">
+              As notificações estão bloqueadas. Permita para os lembretes
+              aparecerem.
             </p>
-            <div className="flex flex-col gap-2.5">
-              {push !== "denied" && (
-                <button
-                  type="button"
-                  disabled={busy || push === "loading"}
-                  onClick={toggle}
-                  data-testid="toggle-push"
-                  className={`h-13 rounded-2xl py-3.5 text-[16px] font-bold disabled:opacity-50 ${
-                    push === "on"
-                      ? "border border-[var(--line)] text-[var(--foreground)]"
-                      : "bg-[var(--color-primary)] text-[var(--on-primary)]"
-                  }`}
-                >
-                  {push === "on" ? "Desligar avisos" : "Ligar avisos"}
-                </button>
-              )}
-              {push === "on" && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={test}
-                  data-testid="test-push"
-                  className="rounded-2xl border border-[var(--line)] py-3.5 text-[15px] font-semibold disabled:opacity-50"
-                >
-                  Enviar aviso de teste
-                </button>
-              )}
-            </div>
-          </>
-        )}
-      </Card>
-
-      <Card title="Instalar no Android" icon="phone">
-        {standalone ? (
-          <p className="text-[14px] leading-relaxed text-[var(--muted)]">Pronto: o MyDay já está instalado e abre em tela cheia.</p>
-        ) : installPrompt ? (
-          <>
-            <p className="mb-4 text-[14px] leading-relaxed text-[var(--muted)]">
-              Instale para abrir pelo ícone, em tela cheia, e receber os avisos como qualquer app.
-            </p>
+          )}
+          <div className="flex flex-col gap-2.5">
+            {nativeStatus && !nativeStatus.notifications && (
+              <button
+                type="button"
+                data-testid="native-allow"
+                onClick={async () =>
+                  setNativeStatus(
+                    (await nativeReminders()?.requestNotifications()) ?? null,
+                  )
+                }
+                className="rounded-2xl bg-[var(--color-primary)] py-3.5 text-[16px] font-bold text-[var(--on-primary)]"
+              >
+                Permitir notificações
+              </button>
+            )}
             <button
               type="button"
-              onClick={install}
-              data-testid="install-app"
-              className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] py-3.5 text-[16px] font-bold text-[var(--on-accent)]"
+              data-testid="native-test"
+              onClick={async () => {
+                const st = await nativeReminders()?.testNow({ seconds: 5 });
+                if (st) setNativeStatus(st);
+                toast.show(
+                  "Alarme de teste em 5 segundos. Pode apagar a tela.",
+                );
+              }}
+              className="rounded-2xl border border-[var(--line)] py-3.5 text-[15px] font-semibold"
             >
-              <Icon name="download" size={18} />
-              Instalar o MyDay
+              Testar alarme falado (5 s)
             </button>
-          </>
-        ) : (
-          <p className="text-[14px] leading-relaxed text-[var(--muted)]">
-            No Chrome, toque no menu <b>⋮</b> e escolha <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b>).
-          </p>
-        )}
-      </Card>
+          </div>
+        </Card>
+      )}
+
+      {!native && (
+        <Card title="Avisos no celular" icon="bell">
+          {pushUnsupported ? (
+            <p className="text-[14px] leading-relaxed text-[var(--muted)]">
+              Este navegador não recebe avisos. No Android, use o Chrome e
+              instale o app (abaixo).
+            </p>
+          ) : serverReady === false ? (
+            <p className="text-[14px] leading-relaxed text-[var(--muted)]">
+              O servidor ainda não tem as chaves de aviso (VAPID). Veja o passo
+              a passo no README, seção “Avisos”.
+            </p>
+          ) : (
+            <>
+              <p className="mb-4 text-[14px] leading-relaxed text-[var(--muted)]">
+                {push === "on"
+                  ? "Ligados neste aparelho. Você recebe o aviso mesmo com o app fechado."
+                  : push === "denied"
+                    ? "Bloqueados. No Chrome: cadeado ao lado do endereço → Permissões → Notificações → Permitir."
+                    : "Ligue para ser avisado no horário das suas tarefas, mesmo com o app fechado."}
+              </p>
+              <div className="flex flex-col gap-2.5">
+                {push !== "denied" && (
+                  <button
+                    type="button"
+                    disabled={busy || push === "loading"}
+                    onClick={toggle}
+                    data-testid="toggle-push"
+                    className={`h-13 rounded-2xl py-3.5 text-[16px] font-bold disabled:opacity-50 ${
+                      push === "on"
+                        ? "border border-[var(--line)] text-[var(--foreground)]"
+                        : "bg-[var(--color-primary)] text-[var(--on-primary)]"
+                    }`}
+                  >
+                    {push === "on" ? "Desligar avisos" : "Ligar avisos"}
+                  </button>
+                )}
+                {push === "on" && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={test}
+                    data-testid="test-push"
+                    className="rounded-2xl border border-[var(--line)] py-3.5 text-[15px] font-semibold disabled:opacity-50"
+                  >
+                    Enviar aviso de teste
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </Card>
+      )}
+
+      {!native && (
+        <Card title="Aviso falado" icon="volume">
+          {!canSpeak ? (
+            <p className="text-[14px] leading-relaxed text-[var(--muted)]">
+              Este navegador não sabe ler em voz alta.
+            </p>
+          ) : (
+            <>
+              <p className="mb-4 text-[14px] leading-relaxed text-[var(--muted)]">
+                Quando o MyDay está aberto, o aviso é lido em voz alta (voz em
+                português do seu Android). Com a tela apagada ou o app fechado,
+                o aviso toca o som e vibra; ao tocar nele, o app abre e lê o
+                lembrete.
+              </p>
+              <div className="flex flex-col gap-2.5">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={speakOn}
+                  data-testid="toggle-speak"
+                  onClick={() => {
+                    setSpeakOn(!speakOn);
+                    setSpeakEnabled(!speakOn);
+                  }}
+                  className={`h-13 rounded-2xl py-3.5 text-[16px] font-bold ${
+                    speakOn
+                      ? "bg-[var(--color-primary)] text-[var(--on-primary)]"
+                      : "border border-[var(--line)]"
+                  }`}
+                >
+                  {speakOn
+                    ? "Ler em voz alta: ligado"
+                    : "Ler em voz alta: desligado"}
+                </button>
+                <button
+                  type="button"
+                  data-testid="test-speak"
+                  onClick={async () => {
+                    const r = await speak(
+                      "Lembrete: ligar para o banco. É agora.",
+                    );
+                    if (r === "blocked")
+                      toast.show("O navegador bloqueou o som. Toque de novo.", {
+                        tone: "error",
+                      });
+                  }}
+                  className="rounded-2xl border border-[var(--line)] py-3.5 text-[15px] font-semibold"
+                >
+                  Testar a voz
+                </button>
+              </div>
+            </>
+          )}
+        </Card>
+      )}
+
+      {!native && (
+        <Card title="Instalar no Android" icon="phone">
+          {standalone ? (
+            <p className="text-[14px] leading-relaxed text-[var(--muted)]">
+              Pronto: o MyDay já está instalado e abre em tela cheia.
+            </p>
+          ) : installPrompt ? (
+            <>
+              <p className="mb-4 text-[14px] leading-relaxed text-[var(--muted)]">
+                Instale para abrir pelo ícone, em tela cheia, e receber os
+                avisos como qualquer app.
+              </p>
+              <button
+                type="button"
+                onClick={install}
+                data-testid="install-app"
+                className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] py-3.5 text-[16px] font-bold text-[var(--on-accent)]"
+              >
+                <Icon name="download" size={18} />
+                Instalar o MyDay
+              </button>
+            </>
+          ) : (
+            <p className="text-[14px] leading-relaxed text-[var(--muted)]">
+              No Chrome, toque no menu <b>⋮</b> e escolha <b>Instalar app</b>{" "}
+              (ou <b>Adicionar à tela inicial</b>).
+            </p>
+          )}
+        </Card>
+      )}
 
       <Card title="Conta" icon="settings">
-        <p className="mb-3 text-[13px] text-[var(--muted)]">Fuso horário: {tz}</p>
+        <p className="mb-3 text-[13px] text-[var(--muted)]">
+          Fuso horário: {tz}
+        </p>
         <button
           type="button"
           onClick={() => signOut({ callbackUrl: "/login" })}

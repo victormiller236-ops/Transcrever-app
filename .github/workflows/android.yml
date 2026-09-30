@@ -1,0 +1,83 @@
+name: App Android (APK)
+
+# Compila o app nativo do MyDay e publica o APK na página de Releases:
+# https://github.com/<dono>/<repo>/releases/tag/android-latest
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "claude/app-android-*"]
+    paths:
+      - "android-app/**"
+      - ".github/workflows/android.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: android-app/package-lock.json
+
+      - name: Chave de assinatura fixa (o APK novo atualiza o antigo sem desinstalar)
+        run: |
+          mkdir -p ~/.android
+          cp android-app/debug.keystore ~/.android/debug.keystore
+
+      - name: Instalar dependências
+        working-directory: android-app
+        run: npm ci
+
+      - name: Sincronizar o Capacitor
+        working-directory: android-app
+        run: npx cap sync android
+
+      - name: Compilar o APK
+        working-directory: android-app/android
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Conferir o APK (pacote, permissões e assinatura)
+        run: |
+          apk=android-app/android/app/build/outputs/apk/debug/app-debug.apk
+          ls -l "$apk"
+          cp "$apk" MyDay.apk
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$bt/aapt2" dump badging MyDay.apk | grep -E "^package:|sdkVersion|targetSdkVersion|uses-permission:" | head -30
+          # A assinatura tem que ser a chave fixa do repositório; se mudar, o APK novo não atualiza o antigo.
+          cert=$("$bt/apksigner" verify --print-certs MyDay.apk | grep "SHA-256 digest" | head -1 | sed 's/.*: //' | tr -d ' ' | tr 'A-F' 'a-f')
+          expected=$(keytool -list -v -keystore android-app/debug.keystore -storepass android 2>/dev/null | grep "SHA256:" | head -1 | sed 's/.*SHA256: *//' | tr -d ': ' | tr 'A-F' 'a-f')
+          echo "assinatura do APK: $cert"
+          echo "chave do repositório: $expected"
+          test -n "$cert" && test "$cert" = "$expected"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MyDay-apk
+          path: MyDay.apk
+          retention-days: 30
+
+      - name: Publicar em Releases (link fixo para baixar no celular)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest MyDay.apk \
+            --title "MyDay para Android" \
+            --notes "APK do MyDay (build #${{ github.run_number }}, commit ${GITHUB_SHA::7}). Baixe no celular e instale; se o Android pedir, permita instalar de fontes desconhecidas." \
+            --prerelease --target "$GITHUB_SHA"

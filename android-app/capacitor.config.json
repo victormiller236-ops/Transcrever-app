@@ -1,0 +1,12 @@
+{
+  "appId": "br.com.myday.app",
+  "appName": "MyDay",
+  "webDir": "www",
+  "server": {
+    "url": "https://transcrever-app-nine.vercel.app",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

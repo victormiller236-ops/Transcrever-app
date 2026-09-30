@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { api, ApiError, clientTz } from "@/lib/client-api";
 import {
   dayLabel,
@@ -13,6 +20,13 @@ import {
   sortTasks,
 } from "@/lib/format";
 import { getPushState, pushSupported, syncPushSubscription } from "@/lib/pwa";
+import { reminderText } from "@/lib/reminder-text";
+import {
+  buildNativeReminders,
+  isNativeApp,
+  nativeReminders,
+} from "@/lib/native";
+import { getSpeakEnabled, speak, stopSpeaking } from "@/lib/speech";
 import type { TaskDraft, TaskDTO } from "@/lib/types";
 import { AlertBanner, type AlertItem } from "./components/AlertBanner";
 import { emptyDraft } from "./components/DraftEditor";
@@ -23,7 +37,14 @@ import { ReviewPanel } from "./components/ReviewPanel";
 import { SettingsTab, type InstallPromptEvent } from "./components/SettingsTab";
 import { TaskRow } from "./components/TaskRow";
 import { TaskSheet, toDraft } from "./components/TaskSheet";
-import { Icon, type IconName, Logo, Sheet, ToastProvider, useToast } from "./components/ui";
+import {
+  Icon,
+  type IconName,
+  Logo,
+  Sheet,
+  ToastProvider,
+  useToast,
+} from "./components/ui";
 import { WeekStrip } from "./components/WeekStrip";
 import { TranscreverClient, type TranscriptionDTO } from "./TranscreverClient";
 
@@ -34,7 +55,12 @@ type SheetState =
   | { kind: "record"; file?: File | null }
   | { kind: "edit"; id: string }
   | { kind: "new"; initial?: Partial<TaskDraft> }
-  | { kind: "review"; drafts: TaskDraft[]; transcript: string; via: "gemini" | "local" };
+  | {
+      kind: "review";
+      drafts: TaskDraft[];
+      transcript: string;
+      via: "gemini" | "local";
+    };
 
 const ALERTED_KEY = "pauta-alerted";
 const NUDGED_KEY = "pauta-push-nudged";
@@ -57,7 +83,10 @@ const subscribeNever = () => () => {};
 let audioCtx: AudioContext | null = null;
 function unlockAudio() {
   try {
-    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const AC =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
     if (!AC) return;
     audioCtx ??= new AC();
     if (audioCtx.state === "suspended") void audioCtx.resume();
@@ -95,7 +124,12 @@ export function PautaApp(props: {
   );
 }
 
-function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
+function Inner({
+  initialTasks,
+  initialTranscriptions,
+  serverTz,
+  initialNow,
+}: {
   initialTasks: TaskDTO[];
   initialTranscriptions: TranscriptionDTO[];
   serverTz: string;
@@ -104,7 +138,9 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
   const toast = useToast();
   // O fuso do aparelho só existe no navegador; no servidor vale o padrão.
   const tz = useSyncExternalStore(subscribeNever, clientTz, () => serverTz);
-  const [clock, setClock] = useState(() => nowParts(serverTz, new Date(initialNow)));
+  const [clock, setClock] = useState(() =>
+    nowParts(serverTz, new Date(initialNow)),
+  );
   const [tasks, setTasks] = useState<TaskDTO[]>(initialTasks);
   const tasksRef = useRef(tasks);
   useEffect(() => {
@@ -118,7 +154,9 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
-  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(
+    null,
+  );
   const alerted = useRef<Set<string>>(new Set());
   const todayKey = clock.key;
 
@@ -126,7 +164,9 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
   useEffect(() => {
     const tick = () => {
       const n = nowParts(tz);
-      setClock((prev) => (prev.key === n.key && prev.minutes === n.minutes ? prev : n));
+      setClock((prev) =>
+        prev.key === n.key && prev.minutes === n.minutes ? prev : n,
+      );
     };
     tick();
     const i = window.setInterval(tick, 20_000);
@@ -194,6 +234,8 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
 
   /* ---------- ações de URL (atalhos do ícone e toque na notificação) ---------- */
   const pendingOpenId = useRef<string | null>(null);
+  // Toque no aviso (?task=ID&speak=1): abre o alerta da tarefa e lê em voz alta, em vez do editor.
+  const pendingSpeakId = useRef<string | null>(null);
   useEffect(() => {
     const url = new URL(window.location.href);
     const action = url.searchParams.get("action");
@@ -202,10 +244,13 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
     if (action === "record") setSheet({ kind: "record" });
     else if (action === "new") setSheet({ kind: "new" });
     /* eslint-enable react-hooks/set-state-in-effect */
-    if (taskId) pendingOpenId.current = taskId;
+    if (taskId && url.searchParams.get("speak") === "1")
+      pendingSpeakId.current = taskId;
+    else if (taskId) pendingOpenId.current = taskId;
     if (action || taskId || url.searchParams.get("source")) {
       url.searchParams.delete("action");
       url.searchParams.delete("task");
+      url.searchParams.delete("speak");
       url.searchParams.delete("source");
       window.history.replaceState(null, "", url.pathname + (url.search || ""));
     }
@@ -218,7 +263,6 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
       setSheet({ kind: "edit", id });
     }
   }, [tasks]);
-
   /* ---------- avisos dentro do app ---------- */
   useEffect(() => {
     try {
@@ -228,13 +272,49 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
   }, []);
 
   const pushAlert = useCallback((item: AlertItem) => {
-    setAlerts((list) => (list.some((a) => a.key === item.key) ? list : [...list, item]));
+    setAlerts((list) =>
+      list.some((a) => a.key === item.key) ? list : [...list, item],
+    );
+    // No app Android, quem toca e fala é o alarme do aparelho; aqui só aparece o cartão.
+    if (isNativeApp()) return;
     beep();
     try {
       // O Chrome bloqueia vibração antes do primeiro toque na página.
-      if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.([200, 100, 200]);
+      if (navigator.userActivation?.hasBeenActive)
+        navigator.vibrate?.([200, 100, 200]);
     } catch {}
+    // Depois do bip, lê o aviso em voz alta. Se o navegador recusar (página sem toque), o botão "Ouvir" resolve.
+    if (getSpeakEnabled())
+      window.setTimeout(() => void speak(item.spoken ?? item.title), 900);
   }, []);
+
+  const openAlertFor = useCallback(
+    (t: TaskDTO, key: string) => {
+      const { body, spoken } = reminderText(
+        {
+          title: t.title,
+          dueAt: new Date(t.dueAt ?? Date.now()),
+          hasTime: t.time !== null,
+          remindMinutesBefore: t.remindMinutesBefore,
+        },
+        new Date(),
+        tz,
+      );
+      pushAlert({ key, taskId: t.id, title: t.title, body, spoken });
+    },
+    [pushAlert, tz],
+  );
+
+  // Abriu pelo toque no aviso: mostra o alerta da tarefa e fala.
+  useEffect(() => {
+    const id = pendingSpeakId.current;
+    const t = id ? tasks.find((x) => x.id === id) : undefined;
+    if (id && t) {
+      pendingSpeakId.current = null;
+      setTab("tarefas");
+      openAlertFor(t, `open:${t.id}:${t.dueAt}`);
+    }
+  }, [tasks, openAlertFor]);
 
   useEffect(() => {
     const check = () => {
@@ -248,34 +328,60 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
         if (alerted.current.has(key)) continue;
         alerted.current.add(key);
         lsSet(ALERTED_KEY, JSON.stringify([...alerted.current].slice(-300)));
-        pushAlert({
-          key,
-          taskId: t.id,
-          title: t.title,
-          body: t.time ? (t.remindMinutesBefore > 0 ? `Já vai começar · ${t.time}` : `Agora · ${t.time}`) : "Para hoje",
-        });
+        openAlertFor(t, key);
       }
     };
     check();
     const i = window.setInterval(check, 15_000);
     return () => window.clearInterval(i);
-  }, [pushAlert, tasks]);
+  }, [openAlertFor, tasks]);
+
+  // App Android: pede permissão de notificação uma vez e mantém os alarmes do aparelho iguais às tarefas.
+  useEffect(() => {
+    const api = nativeReminders();
+    if (!api || lsGet("myday-native-notif") === "1") return;
+    lsSet("myday-native-notif", "1");
+    void api.requestNotifications().catch(() => {});
+  }, []);
+  useEffect(() => {
+    const api = nativeReminders();
+    if (!api) return;
+    const timer = window.setTimeout(() => {
+      void api
+        .schedule({ items: buildNativeReminders(tasks, tz) })
+        .catch(() => {});
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [tasks, tz]);
 
   // Push que chega com o app aberto: o service worker repassa para cá em vez de notificar.
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     const onMessage = (e: MessageEvent) => {
       if (e.data?.type !== "push") return;
-      const p = e.data.payload as { title?: string; body?: string; taskId?: string; tag?: string };
+      const p = e.data.payload as {
+        title?: string;
+        body?: string;
+        spoken?: string;
+        taskId?: string;
+        tag?: string;
+      };
       if (p.taskId) {
         void refresh();
-        pushAlert({ key: `push:${p.tag ?? p.taskId}:${Date.now() - (Date.now() % 60_000)}`, taskId: p.taskId, title: p.title ?? "Tarefa", body: p.body ?? "" });
+        pushAlert({
+          key: `push:${p.tag ?? p.taskId}:${Date.now() - (Date.now() % 60_000)}`,
+          taskId: p.taskId,
+          title: p.title ?? "Tarefa",
+          body: p.body ?? "",
+          spoken: p.spoken,
+        });
       } else if (p.body) {
         toast.show(p.body);
       }
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
-    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+    return () =>
+      navigator.serviceWorker.removeEventListener("message", onMessage);
   }, [pushAlert, refresh, toast]);
 
   // Navegadores só liberam som depois de um toque.
@@ -287,7 +393,9 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
 
   /* ---------- operações ---------- */
   const replaceTask = useCallback((updated: TaskDTO) => {
-    setTasks((p) => sortTasks(p.map((x) => (x.id === updated.id ? updated : x))));
+    setTasks((p) =>
+      sortTasks(p.map((x) => (x.id === updated.id ? updated : x))),
+    );
   }, []);
 
   async function maybeNudgePush() {
@@ -301,7 +409,11 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
     });
   }
 
-  async function createTasks(drafts: TaskDraft[], source: "manual" | "voice", transcript?: string) {
+  async function createTasks(
+    drafts: TaskDraft[],
+    source: "manual" | "voice",
+    transcript?: string,
+  ) {
     setSaving(true);
     try {
       const res = await api<{ tasks: TaskDTO[] }>("/api/tasks", {
@@ -312,14 +424,19 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
       setSheet(null);
       const n = res.tasks.length;
       const first = res.tasks[0];
-      toast.show(n === 1 ? "Tarefa salva" : `${n} tarefas salvas`, { tone: "success" });
+      toast.show(n === 1 ? "Tarefa salva" : `${n} tarefas salvas`, {
+        tone: "success",
+      });
       if (n === 1 && first.date) {
         setSelected(first.date);
         setTab("tarefas");
       }
       void maybeNudgePush();
     } catch (e) {
-      toast.show(e instanceof ApiError ? e.message : "Não consegui salvar.", { tone: "error", ms: 5000 });
+      toast.show(e instanceof ApiError ? e.message : "Não consegui salvar.", {
+        tone: "error",
+        ms: 5000,
+      });
     } finally {
       setSaving(false);
     }
@@ -336,7 +453,10 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
       setSheet(null);
       toast.show("Alterações salvas");
     } catch (e) {
-      toast.show(e instanceof ApiError ? e.message : "Não consegui salvar.", { tone: "error", ms: 5000 });
+      toast.show(e instanceof ApiError ? e.message : "Não consegui salvar.", {
+        tone: "error",
+        ms: 5000,
+      });
     } finally {
       setSaving(false);
     }
@@ -345,13 +465,26 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
   async function toggleTask(t: TaskDTO) {
     const nextDone = !t.done;
     setTasks((p) =>
-      sortTasks(p.map((x) => (x.id === t.id ? { ...x, done: nextDone, doneAt: nextDone ? new Date().toISOString() : null } : x))),
+      sortTasks(
+        p.map((x) =>
+          x.id === t.id
+            ? {
+                ...x,
+                done: nextDone,
+                doneAt: nextDone ? new Date().toISOString() : null,
+              }
+            : x,
+        ),
+      ),
     );
     try {
-      const res = await api<{ task: TaskDTO; advanced: boolean }>(`/api/tasks/${t.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ done: nextDone }),
-      });
+      const res = await api<{ task: TaskDTO; advanced: boolean }>(
+        `/api/tasks/${t.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ done: nextDone }),
+        },
+      );
       replaceTask(res.task);
       if (nextDone) {
         toast.show(
@@ -362,10 +495,17 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
             actionLabel: "Desfazer",
             onAction: async () => {
               try {
-                const back = await api<{ task: TaskDTO }>(`/api/tasks/${t.id}`, {
-                  method: "PATCH",
-                  body: JSON.stringify(res.advanced ? { date: t.date, time: t.time } : { done: false }),
-                });
+                const back = await api<{ task: TaskDTO }>(
+                  `/api/tasks/${t.id}`,
+                  {
+                    method: "PATCH",
+                    body: JSON.stringify(
+                      res.advanced
+                        ? { date: t.date, time: t.time }
+                        : { done: false },
+                    ),
+                  },
+                );
                 replaceTask(back.task);
               } catch {
                 void refresh();
@@ -376,7 +516,10 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
       }
     } catch (e) {
       replaceTask(t);
-      toast.show(e instanceof ApiError ? e.message : "Não consegui atualizar.", { tone: "error" });
+      toast.show(
+        e instanceof ApiError ? e.message : "Não consegui atualizar.",
+        { tone: "error" },
+      );
     }
   }
 
@@ -401,23 +544,30 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
       });
     } catch (e) {
       setTasks((p) => sortTasks([...p, t]));
-      toast.show(e instanceof ApiError ? e.message : "Não consegui excluir.", { tone: "error" });
+      toast.show(e instanceof ApiError ? e.message : "Não consegui excluir.", {
+        tone: "error",
+      });
     }
   }
 
   async function alertDone(a: AlertItem) {
+    stopSpeaking();
     setAlerts((l) => l.filter((x) => x.key !== a.key));
     const t = tasksRef.current.find((x) => x.id === a.taskId);
     if (t) await toggleTask(t);
   }
   async function alertSnooze(a: AlertItem) {
+    stopSpeaking();
     setAlerts((l) => l.filter((x) => x.key !== a.key));
     if (!a.taskId) return;
     try {
-      const res = await api<{ task: TaskDTO }>(`/api/tasks/${a.taskId}/snooze`, {
-        method: "POST",
-        body: JSON.stringify({ minutes: 10 }),
-      });
+      const res = await api<{ task: TaskDTO }>(
+        `/api/tasks/${a.taskId}/snooze`,
+        {
+          method: "POST",
+          body: JSON.stringify({ minutes: 10 }),
+        },
+      );
       replaceTask(res.task);
       toast.show("Adiada por 10 minutos");
     } catch {
@@ -427,43 +577,78 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
 
   async function extractFromText(text: string) {
     try {
-      const res = await api<{ transcript: string; drafts: TaskDraft[]; via: "gemini" | "local" }>("/api/tasks/voice", {
+      const res = await api<{
+        transcript: string;
+        drafts: TaskDraft[];
+        via: "gemini" | "local";
+      }>("/api/tasks/voice", {
         method: "POST",
         body: JSON.stringify({ text }),
       });
-      setSheet({ kind: "review", drafts: res.drafts, transcript: res.transcript, via: res.via });
+      setSheet({
+        kind: "review",
+        drafts: res.drafts,
+        transcript: res.transcript,
+        via: res.via,
+      });
     } catch (e) {
-      toast.show(e instanceof ApiError ? e.message : "Não consegui criar tarefas a partir do texto.", { tone: "error", ms: 5000 });
+      toast.show(
+        e instanceof ApiError
+          ? e.message
+          : "Não consegui criar tarefas a partir do texto.",
+        { tone: "error", ms: 5000 },
+      );
     }
   }
 
   /* ---------- derivados ---------- */
-  const groups = useMemo(() => groupForDay(tasks, selected, todayKey, clock.minutes), [tasks, selected, todayKey, clock.minutes]);
+  const groups = useMemo(
+    () => groupForDay(tasks, selected, todayKey, clock.minutes),
+    [tasks, selected, todayKey, clock.minutes],
+  );
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
-    for (const t of tasks) if (!t.done && t.date) c[t.date] = (c[t.date] ?? 0) + 1;
+    for (const t of tasks)
+      if (!t.done && t.date) c[t.date] = (c[t.date] ?? 0) + 1;
     return c;
   }, [tasks]);
-  const progress = useMemo(() => doneToday(tasks, todayKey, tz), [tasks, todayKey, tz]);
+  const progress = useMemo(
+    () => doneToday(tasks, todayKey, tz),
+    [tasks, todayKey, tz],
+  );
   const doneTodayList = useMemo(
-    () => tasks.filter((t) => t.done && t.doneAt && nowParts(tz, new Date(t.doneAt)).key === todayKey),
+    () =>
+      tasks.filter(
+        (t) =>
+          t.done &&
+          t.doneAt &&
+          nowParts(tz, new Date(t.doneAt)).key === todayKey,
+      ),
     [tasks, tz, todayKey],
   );
   const agendaGroups = useMemo(() => groupByDate(tasks), [tasks]);
   const doneList = useMemo(
-    () => tasks.filter((t) => t.done).sort((a, b) => (b.doneAt ?? "").localeCompare(a.doneAt ?? "")).slice(0, 100),
+    () =>
+      tasks
+        .filter((t) => t.done)
+        .sort((a, b) => (b.doneAt ?? "").localeCompare(a.doneAt ?? ""))
+        .slice(0, 100),
     [tasks],
   );
 
   const dateLabel = useMemo(() => {
     const [y, m, d] = todayKey.split("-").map(Number);
-    const text = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" }).format(
-      new Date(Date.UTC(y, m - 1, d)),
-    );
+    const text = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "UTC",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }).format(new Date(Date.UTC(y, m - 1, d)));
     return text.charAt(0).toUpperCase() + text.slice(1);
   }, [todayKey]);
 
-  const editing = sheet?.kind === "edit" ? tasks.find((t) => t.id === sheet.id) : undefined;
+  const editing =
+    sheet?.kind === "edit" ? tasks.find((t) => t.id === sheet.id) : undefined;
   const openCount = tasks.filter((t) => !t.done).length;
 
   const rowProps = {
@@ -473,15 +658,23 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
     onOpen: (t: TaskDTO) => setSheet({ kind: "edit", id: t.id }),
   };
 
-  const dayEmpty = groups.overdue.length + groups.day.length + groups.undated.length === 0;
+  const dayEmpty =
+    groups.overdue.length + groups.day.length + groups.undated.length === 0;
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-1 flex-col px-5" style={{ paddingBottom: "calc(120px + var(--safe-bottom))" }}>
+    <div
+      className="mx-auto flex w-full max-w-lg flex-1 flex-col px-5"
+      style={{ paddingBottom: "calc(120px + var(--safe-bottom))" }}
+    >
       <AlertBanner
         alerts={alerts}
         onDone={alertDone}
         onSnooze={alertSnooze}
-        onDismiss={(a) => setAlerts((l) => l.filter((x) => x.key !== a.key))}
+        onDismiss={(a) => {
+          stopSpeaking();
+          setAlerts((l) => l.filter((x) => x.key !== a.key));
+        }}
+        onSpeak={(a) => void speak(a.spoken ?? a.title)}
         onOpen={(a) => {
           setAlerts((l) => l.filter((x) => x.key !== a.key));
           if (a.taskId) setSheet({ kind: "edit", id: a.taskId });
@@ -493,8 +686,12 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
         <header className="flex items-center gap-3.5 pt-[max(20px,calc(var(--safe-top)+8px))]">
           <Logo size={48} />
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold text-[var(--muted)]">{dateLabel}</p>
-            <h1 className="truncate text-[24px] font-bold leading-tight tracking-tight">{greeting(Math.floor(clock.minutes / 60))}!</h1>
+            <p className="text-[13px] font-semibold text-[var(--muted)]">
+              {dateLabel}
+            </p>
+            <h1 className="truncate text-[24px] font-bold leading-tight tracking-tight">
+              {greeting(Math.floor(clock.minutes / 60))}!
+            </h1>
           </div>
           <ProgressRing done={progress.done} total={progress.total} />
         </header>
@@ -508,7 +705,12 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
           onMic={() => setSheet({ kind: "record" })}
         />
 
-        <WeekStrip todayKey={todayKey} selected={selected} onSelect={setSelected} counts={counts} />
+        <WeekStrip
+          todayKey={todayKey}
+          selected={selected}
+          onSelect={setSelected}
+          counts={counts}
+        />
 
         <div className="flex flex-col gap-6" data-testid="task-list">
           {!loaded && tasks.length === 0 && (
@@ -519,7 +721,11 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
           )}
 
           {groups.overdue.length > 0 && (
-            <Section title="Atrasadas" count={groups.overdue.length} tone="danger">
+            <Section
+              title="Atrasadas"
+              count={groups.overdue.length}
+              tone="danger"
+            >
               {groups.overdue.map((t, i) => (
                 <TaskRow key={t.id} task={t} index={i} showDate {...rowProps} />
               ))}
@@ -527,7 +733,10 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
           )}
 
           {groups.day.length > 0 && (
-            <Section title={`${dayLabel(selected, todayKey)} · ${shortDate(selected)}`} count={groups.day.length}>
+            <Section
+              title={`${dayLabel(selected, todayKey)} · ${shortDate(selected)}`}
+              count={groups.day.length}
+            >
               {groups.day.map((t, i) => (
                 <TaskRow key={t.id} task={t} index={i} {...rowProps} />
               ))}
@@ -543,10 +752,15 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
           )}
 
           {loaded && dayEmpty && (
-            <div className="anim-rise flex flex-col items-center gap-3 rounded-3xl border border-dashed border-[var(--line)] px-6 py-10 text-center" data-testid="empty-day">
+            <div
+              className="anim-rise flex flex-col items-center gap-3 rounded-3xl border border-dashed border-[var(--line)] px-6 py-10 text-center"
+              data-testid="empty-day"
+            >
               <Logo size={72} />
               <p className="text-[18px] font-bold">
-                {selected === todayKey ? "Nada pendente por hoje" : `Nada marcado para ${dayLabel(selected, todayKey).toLowerCase()}`}
+                {selected === todayKey
+                  ? "Nada pendente por hoje"
+                  : `Nada marcado para ${dayLabel(selected, todayKey).toLowerCase()}`}
               </p>
               <p className="max-w-[26ch] text-[14px] leading-relaxed text-[var(--muted)]">
                 Toque no microfone e diga o que precisa fazer, com dia e hora.
@@ -563,8 +777,12 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
                 className="flex items-center gap-2 px-1 text-left text-[12px] font-bold uppercase tracking-wider text-[var(--muted)]"
               >
                 Concluídas hoje
-                <span className="rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[11px]">{doneTodayList.length}</span>
-                <span className="ml-auto">{showDoneToday ? "Esconder" : "Mostrar"}</span>
+                <span className="rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[11px]">
+                  {doneTodayList.length}
+                </span>
+                <span className="ml-auto">
+                  {showDoneToday ? "Esconder" : "Mostrar"}
+                </span>
               </button>
               {showDoneToday && (
                 <ul className="flex flex-col gap-2.5">
@@ -583,11 +801,19 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
         <header className="pt-[max(20px,calc(var(--safe-top)+8px))]">
           <h1 className="text-[28px] font-bold tracking-tight">Agenda</h1>
           <p className="text-[14px] text-[var(--muted)]">
-            {openCount === 0 ? "Tudo em dia." : openCount === 1 ? "1 tarefa em aberto." : `${openCount} tarefas em aberto.`}
+            {openCount === 0
+              ? "Tudo em dia."
+              : openCount === 1
+                ? "1 tarefa em aberto."
+                : `${openCount} tarefas em aberto.`}
           </p>
         </header>
 
-        <div className="flex gap-1 rounded-2xl bg-[var(--surface-2)] p-1" role="tablist" aria-label="Filtro">
+        <div
+          className="flex gap-1 rounded-2xl bg-[var(--surface-2)] p-1"
+          role="tablist"
+          aria-label="Filtro"
+        >
           {(
             [
               ["open", "Próximas"],
@@ -601,7 +827,9 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
               aria-selected={agendaMode === k}
               onClick={() => setAgendaMode(k)}
               className={`h-11 flex-1 rounded-xl text-[15px] font-bold transition-colors ${
-                agendaMode === k ? "bg-[var(--surface)] shadow-sm" : "text-[var(--muted)]"
+                agendaMode === k
+                  ? "bg-[var(--surface)] shadow-sm"
+                  : "text-[var(--muted)]"
               }`}
             >
               {label}
@@ -621,7 +849,13 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
                 return (
                   <Section
                     key={g.key ?? "none"}
-                    title={g.key === null ? "Sem data" : late ? `Atrasadas · ${shortDate(g.key)}` : `${dayLabel(g.key, todayKey)} · ${shortDate(g.key)}`}
+                    title={
+                      g.key === null
+                        ? "Sem data"
+                        : late
+                          ? `Atrasadas · ${shortDate(g.key)}`
+                          : `${dayLabel(g.key, todayKey)} · ${shortDate(g.key)}`
+                    }
                     tone={late ? "danger" : undefined}
                   >
                     {g.tasks.map((t, i) => (
@@ -647,13 +881,23 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
 
       {/* ---------------- TRANSCREVER ---------------- */}
       <div hidden={tab !== "transcrever"} className="flex flex-1 flex-col">
-        <TranscreverClient initialTranscriptions={initialTranscriptions} onExtract={extractFromText} />
+        <TranscreverClient
+          initialTranscriptions={initialTranscriptions}
+          onExtract={extractFromText}
+        />
       </div>
 
       {/* ---------------- AJUSTES ---------------- */}
-      <div hidden={tab !== "ajustes"} className="pt-[max(20px,calc(var(--safe-top)+8px))]">
+      <div
+        hidden={tab !== "ajustes"}
+        className="pt-[max(20px,calc(var(--safe-top)+8px))]"
+      >
         {tab === "ajustes" && (
-          <SettingsTab tz={tz} installPrompt={installPrompt} onInstalled={() => setInstallPrompt(null)} />
+          <SettingsTab
+            tz={tz}
+            installPrompt={installPrompt}
+            onInstalled={() => setInstallPrompt(null)}
+          />
         )}
       </div>
 
@@ -664,8 +908,20 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
         aria-label="Navegação"
       >
         <div className="mx-auto grid max-w-lg grid-cols-5 items-end px-2">
-          <NavButton id="tarefas" current={tab} icon="list" label="Tarefas" onSelect={setTab} />
-          <NavButton id="agenda" current={tab} icon="agenda" label="Agenda" onSelect={setTab} />
+          <NavButton
+            id="tarefas"
+            current={tab}
+            icon="list"
+            label="Tarefas"
+            onSelect={setTab}
+          />
+          <NavButton
+            id="agenda"
+            current={tab}
+            icon="agenda"
+            label="Agenda"
+            onSelect={setTab}
+          />
           <div className="relative flex h-16 justify-center">
             <button
               type="button"
@@ -677,8 +933,20 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
               <Icon name="mic" size={30} strokeWidth={2.3} />
             </button>
           </div>
-          <NavButton id="transcrever" current={tab} icon="text" label="Transcrever" onSelect={setTab} />
-          <NavButton id="ajustes" current={tab} icon="settings" label="Ajustes" onSelect={setTab} />
+          <NavButton
+            id="transcrever"
+            current={tab}
+            icon="text"
+            label="Transcrever"
+            onSelect={setTab}
+          />
+          <NavButton
+            id="ajustes"
+            current={tab}
+            icon="settings"
+            label="Ajustes"
+            onSelect={setTab}
+          />
         </div>
       </nav>
 
@@ -689,7 +957,9 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
           initialFile={sheet.file}
           saving={saving}
           onClose={() => setSheet(null)}
-          onSave={(drafts, transcript) => void createTasks(drafts, "voice", transcript)}
+          onSave={(drafts, transcript) =>
+            void createTasks(drafts, "voice", transcript)
+          }
         />
       )}
       {sheet?.kind === "new" && (
@@ -717,14 +987,19 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
         />
       )}
       {sheet?.kind === "review" && (
-        <Sheet onClose={() => setSheet(null)} label="Tarefas encontradas no texto">
+        <Sheet
+          onClose={() => setSheet(null)}
+          label="Tarefas encontradas no texto"
+        >
           <ReviewPanel
             drafts={sheet.drafts}
             transcript={sheet.transcript}
             via={sheet.via}
             todayKey={todayKey}
             saving={saving}
-            onSave={(drafts) => void createTasks(drafts, "voice", sheet.transcript)}
+            onSave={(drafts) =>
+              void createTasks(drafts, "voice", sheet.transcript)
+            }
             onCancel={() => setSheet(null)}
           />
         </Sheet>
@@ -733,17 +1008,31 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
   );
 }
 
-function Section({ title, count, tone, children }: { title: string; count?: number; tone?: "danger"; children: React.ReactNode }) {
+function Section({
+  title,
+  count,
+  tone,
+  children,
+}: {
+  title: string;
+  count?: number;
+  tone?: "danger";
+  children: React.ReactNode;
+}) {
   return (
     <section className="flex flex-col gap-2.5">
       <h2
         className={`flex items-center gap-2 px-1 text-[12px] font-bold uppercase tracking-wider ${
-          tone === "danger" ? "text-[var(--color-danger)]" : "text-[var(--muted)]"
+          tone === "danger"
+            ? "text-[var(--color-danger)]"
+            : "text-[var(--muted)]"
         }`}
       >
         {title}
         {count !== undefined && (
-          <span className="rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[11px] text-[var(--muted)]">{count}</span>
+          <span className="rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[11px] text-[var(--muted)]">
+            {count}
+          </span>
         )}
       </h2>
       <ul className="flex flex-col gap-2.5">{children}</ul>
@@ -775,7 +1064,9 @@ function NavButton({
         active ? "text-[var(--color-primary)]" : "text-[var(--faint)]"
       }`}
     >
-      <span className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors ${active ? "bg-[var(--surface-2)]" : ""}`}>
+      <span
+        className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors ${active ? "bg-[var(--surface-2)]" : ""}`}
+      >
         <Icon name={icon} size={21} strokeWidth={active ? 2.4 : 2} />
       </span>
       {label}

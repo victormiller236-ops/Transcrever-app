@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
-import { DEFAULT_TIMEZONE, pad2, utcToLocalParts } from "./datetime";
+import { DEFAULT_TIMEZONE } from "./datetime";
+import { reminderText } from "./reminder-text";
 import { PushSendError, sendPush, type PushPayload, type PushSender } from "./push";
 
 /** Avisos com mais que isso de atraso são descartados em silêncio (não adianta acordar ninguém por algo de ontem). */
@@ -15,33 +16,18 @@ export interface DispatchSummary {
   reason?: string;
 }
 
-function humanMinutes(m: number): string {
-  if (m % 1440 === 0) return m === 1440 ? "1 dia" : `${m / 1440} dias`;
-  if (m % 60 === 0) return m === 60 ? "1 hora" : `${m / 60} horas`;
-  return `${m} min`;
-}
-
 export function buildPayload(
   task: { id: string; title: string; dueAt: Date; hasTime: boolean; remindMinutesBefore: number },
   now: Date,
   tz: string,
 ): PushPayload {
-  const p = utcToLocalParts(task.dueAt, tz);
-  const hhmm = `${pad2(p.hour)}:${pad2(p.minute)}`;
-  let body: string;
-  if (!task.hasTime) {
-    body = "Para hoje";
-  } else if (task.remindMinutesBefore > 0 && task.dueAt.getTime() > now.getTime()) {
-    body = `Daqui a ${humanMinutes(task.remindMinutesBefore)} · ${hhmm}`;
-  } else if (now.getTime() - task.dueAt.getTime() > 10 * 60_000) {
-    body = `Atrasada · era às ${hhmm}`;
-  } else {
-    body = `Agora · ${hhmm}`;
-  }
+  const { body, spoken } = reminderText(task, now, tz);
   return {
     title: task.title,
     body,
-    url: `/?task=${task.id}`,
+    spoken,
+    // speak=1: ao tocar no aviso, o app abre e lê o lembrete em voz alta.
+    url: `/?task=${task.id}&speak=1`,
     tag: `task-${task.id}`,
     taskId: task.id,
     actions: true,
