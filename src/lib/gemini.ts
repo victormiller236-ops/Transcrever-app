@@ -1,6 +1,7 @@
 import { GoogleGenAI, createPartFromUri, createUserContent } from "@google/genai";
 
-const MODEL = "gemini-3.5-flash";
+export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+const MODEL = GEMINI_MODEL;
 
 const PROMPT =
   "Transcreva integralmente a fala contida neste arquivo de áudio ou vídeo, " +
@@ -9,13 +10,15 @@ const PROMPT =
 
 let client: GoogleGenAI | null = null;
 
-function getClient(): GoogleGenAI {
+export function getClient(): GoogleGenAI {
   if (!client) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error("GEMINI_API_KEY não configurada.");
     }
-    client = new GoogleGenAI({ apiKey });
+    // GEMINI_BASE_URL permite apontar para um proxy (ou um servidor de teste).
+    const baseUrl = process.env.GEMINI_BASE_URL;
+    client = new GoogleGenAI({ apiKey, ...(baseUrl ? { httpOptions: { baseUrl } } : {}) });
   }
   return client;
 }

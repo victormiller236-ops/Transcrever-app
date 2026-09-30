@@ -1,0 +1,36 @@
+name: Lembretes
+
+# Chama o servidor a cada 5 minutos para disparar os avisos das tarefas que venceram.
+# O horário do GitHub é "melhor esforço": pode atrasar alguns minutos. Para precisão de
+# 1 minuto use o cron-job.org (veja o README, seção "Avisos").
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: lembretes
+  cancel-in-progress: false
+
+jobs:
+  disparar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Disparar avisos vencidos
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_BYPASS: ${{ secrets.VERCEL_BYPASS }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "Secrets APP_URL e CRON_SECRET ainda não configurados; nada a fazer."
+            exit 0
+          fi
+          bypass=()
+          if [ -n "$VERCEL_BYPASS" ]; then bypass=(-H "x-vercel-protection-bypass: $VERCEL_BYPASS"); fi
+          code=$(curl -sS -o resposta.json -w '%{http_code}' -X POST --max-time 50 \
+            -H "Authorization: Bearer $CRON_SECRET" "${bypass[@]}" \
+            "${APP_URL%/}/api/cron/dispatch")
+          cat resposta.json; echo
+          if [ "$code" != "200" ]; then echo "HTTP $code"; exit 1; fi

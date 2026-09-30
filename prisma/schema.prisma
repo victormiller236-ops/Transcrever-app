@@ -18,3 +18,42 @@ model Transcription {
 
   @@index([createdAt])
 }
+
+model Task {
+  id                  String    @id @default(cuid())
+  title               String
+  notes               String?   @db.Text
+  // Instante absoluto (UTC). Null = tarefa sem data.
+  dueAt               DateTime?
+  // false = só a data importa (o horário guardado é o padrão das 09:00 locais).
+  hasTime             Boolean   @default(true)
+  // Minutos de antecedência do aviso em relação a dueAt (0 = na hora).
+  remindMinutesBefore Int       @default(0)
+  // 0 = normal, 1 = alta
+  priority            Int       @default(0)
+  // none | daily | weekly | monthly
+  repeat              String    @default("none")
+  done                Boolean   @default(false)
+  doneAt              DateTime?
+  // Preenchido quando o aviso desta ocorrência já foi disparado.
+  remindedAt          DateTime?
+  // manual | voice
+  source              String    @default("manual")
+  transcript          String?   @db.Text
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([done, dueAt])
+  @@index([remindedAt, dueAt])
+}
+
+model PushSubscription {
+  id            String    @id @default(cuid())
+  endpoint      String    @unique
+  p256dh        String
+  auth          String
+  userAgent     String?
+  createdAt     DateTime  @default(now())
+  lastSuccessAt DateTime?
+  failures      Int       @default(0)
+}

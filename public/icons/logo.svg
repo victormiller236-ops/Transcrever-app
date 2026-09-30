@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd27a"/>
+      <stop offset="1" stop-color="#ee9a2b"/>
+    </linearGradient>
+    <linearGradient id="suit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f2a52"/>
+      <stop offset="1" stop-color="#121a38"/>
+    </linearGradient>
+    <linearGradient id="case" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8a5326"/>
+      <stop offset="1" stop-color="#5e3617"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="256" cy="262" r="196" fill="#fff" opacity=".16"/>
+  <g transform="translate(256 262) scale(.9) translate(-256 -262)">
+    <ellipse cx="256" cy="438" rx="150" ry="14" fill="#7a4708" opacity=".28"/>
+    <!-- pernas -->
+    <path d="M212 316 L256 316 L252 430 L214 430 Z" fill="#141c3c"/>
+    <path d="M256 316 L300 316 L298 430 L260 430 Z" fill="#19234a"/>
+    <!-- sapatos -->
+    <path d="M204 428 h50 a8 8 0 0 1 8 8 v4 h-58 z" fill="#0c1024"/>
+    <path d="M258 428 h50 a8 8 0 0 1 8 8 v4 h-58 z" fill="#0c1024"/>
+    <!-- braco esquerdo (atras) -->
+    <path d="M198 198 L168 208 L158 322 L188 326 Z" fill="#141c3c"/>
+    <!-- paleto -->
+    <path d="M196 196 Q256 170 316 196 L328 334 L184 334 Z" fill="url(#suit)"/>
+    <!-- braco direito -->
+    <path d="M314 198 L344 208 L360 318 L332 322 Z" fill="#141c3c"/>
+    <!-- camisa -->
+    <path d="M230 186 L282 186 L256 252 Z" fill="#ffffff"/>
+    <!-- lapelas -->
+    <path d="M230 186 L256 252 L236 266 L210 206 Z" fill="#2b3a72"/>
+    <path d="M282 186 L256 252 L276 266 L302 206 Z" fill="#2b3a72"/>
+    <!-- gravata -->
+    <path d="M249 202 h14 l3 12 h-20 z" fill="#0f9e8f"/>
+    <path d="M246 214 h20 l6 76 l-16 14 l-16 -14 z" fill="#14b8a6"/>
+    <path d="M256 214 h10 l6 76 l-16 14 z" fill="#0f9e8f" opacity=".55"/>
+    <!-- lenco e botao -->
+    <path d="M222 240 l16 -5 l3 11 l-17 3 z" fill="#ffffff"/>
+    <circle cx="276" cy="318" r="3.4" fill="#0c1024"/>
+    <!-- pescoco e cabeca -->
+    <rect x="242" y="164" width="28" height="30" rx="8" fill="#e3a982"/>
+    <circle cx="216" cy="140" r="8" fill="#eab592"/>
+    <circle cx="296" cy="140" r="8" fill="#eab592"/>
+    <circle cx="256" cy="136" r="40" fill="#f3c6a3"/>
+    <path d="M215 132 Q211 92 256 92 Q301 92 297 132 Q288 110 256 112 Q224 110 215 132 Z" fill="#2a1c13"/>
+    <path d="M232 130 q9 -6 18 0" stroke="#2a1c13" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M262 130 q9 -6 18 0" stroke="#2a1c13" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <circle cx="241" cy="141" r="3.6" fill="#22160f"/>
+    <circle cx="271" cy="141" r="3.6" fill="#22160f"/>
+    <path d="M243 157 Q256 168 269 157" stroke="#9a5b3a" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <!-- maos -->
+    <circle cx="173" cy="330" r="14" fill="#f3c6a3"/>
+    <circle cx="346" cy="330" r="14" fill="#f3c6a3"/>
+    <!-- maleta -->
+    <path d="M325 360 v-12 q0 -14 21 -14 q21 0 21 14 v12" stroke="#4a2a10" stroke-width="7" fill="none" stroke-linecap="round"/>
+    <rect x="302" y="358" width="88" height="66" rx="11" fill="url(#case)"/>
+    <rect x="302" y="376" width="88" height="5" fill="#4a2a10" opacity=".55"/>
+    <rect x="337" y="370" width="18" height="16" rx="3" fill="#f7d27a" stroke="#b9831f" stroke-width="2"/>
+    <circle cx="346" cy="378" r="2.4" fill="#b9831f"/>
+    <path d="M302 369 q0 -11 11 -11 h66 q11 0 11 11" fill="#fff" opacity=".1"/>
+    <!-- mao na alca -->
+    <circle cx="346" cy="336" r="13" fill="#f3c6a3"/>
+  </g>
+</svg>
