@@ -1,0 +1,55 @@
+# Configuração do agente de preços de fralda.
+# Edite a seção [[produtos]] para a marca/linha/tamanho que você realmente compra.
+
+[geral]
+paginas = 3            # páginas de 50 resultados por busca, por loja
+pausa_segundos = 3     # espera entre requisições (dobra a cada nova tentativa)
+tentativas = 4
+timeout_segundos = 30
+top = 10               # quantas ofertas mostrar por produto no relatório
+# Ofertas cujo nome contém qualquer um destes termos são sempre ignoradas.
+excluir = ["geriatric", "adulto", "roupa intima", "lenco", "pomada", "creme",
+           "fralda de pano", "absorvente", "trocador", "tapete", "piscina", "agua"]
+
+# Farmácias on-line na plataforma VTEX. Loja que falhar aparece em "Falhas" no
+# relatório, sem derrubar as demais.
+[[lojas]]
+nome = "Drogaria São Paulo"
+dominio = "www.drogariasaopaulo.com.br"
+
+[[lojas]]
+nome = "Drogarias Pacheco"
+dominio = "www.drogariaspacheco.com.br"
+
+[[lojas]]
+nome = "Pague Menos"
+dominio = "www.paguemenos.com.br"
+
+[[lojas]]
+nome = "Drogaria Venâncio"
+dominio = "www.drogariavenancio.com.br"
+
+[[lojas]]
+nome = "Drogaria Araujo"
+dominio = "www.araujo.com.br"
+
+# Cada produto é buscado em cada loja. Só entra no ranking a oferta cujo nome
+# contém TODOS os `termos`, é do `tamanho` indicado (RN, P, M, G, XG, XXG, XXXG)
+# e tem a quantidade de fraldas legível no nome.
+[[produtos]]
+nome = "Pampers Confort Sec — G"
+busca = "fralda pampers confort sec g"
+termos = ["pampers", "confort sec"]
+tamanho = "G"
+
+[[produtos]]
+nome = "Huggies Tripla Proteção — G"
+busca = "fralda huggies tripla protecao g"
+termos = ["huggies", "tripla protecao"]
+tamanho = "G"
+
+[[produtos]]
+nome = "MamyPoko — G"
+busca = "fralda mamypoko g"
+termos = ["mamypoko"]
+tamanho = "G"
