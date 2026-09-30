@@ -26,7 +26,7 @@ export default function LoginPage() {
     <main className="min-h-dvh flex items-center justify-center p-6">
       <form onSubmit={handleSubmit} className="anim-rise w-full max-w-xs rounded-3xl bg-[var(--surface)] p-7 shadow-[var(--shadow)]">
         <Logo size={88} className="mx-auto mb-4" />
-        <h1 className="mb-1 text-center text-[28px] font-bold tracking-tight">Pauta</h1>
+        <h1 className="mb-1 text-center text-[28px] font-bold tracking-tight">MyDay</h1>
         <p className="mb-6 text-center text-[14px] text-[var(--muted)]">Suas tarefas por voz. Entre com a sua senha.</p>
         <input
           type="password"

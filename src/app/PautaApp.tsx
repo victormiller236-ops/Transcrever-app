@@ -182,7 +182,7 @@ function Inner({ initialTasks, initialTranscriptions, serverTz, initialNow }: {
     };
     const onInstalled = () => {
       setInstallPrompt(null);
-      toast.show("Pauta instalado!", { tone: "success" });
+      toast.show("MyDay instalado!", { tone: "success" });
     };
     window.addEventListener("beforeinstallprompt", onPrompt);
     window.addEventListener("appinstalled", onInstalled);

@@ -3,8 +3,8 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "Pauta · tarefas por voz",
-    short_name: "Pauta",
+    name: "MyDay · tarefas por voz",
+    short_name: "MyDay",
     description: "Fale suas tarefas, com dia e hora, e receba o aviso no celular.",
     lang: "pt-BR",
     dir: "ltr",

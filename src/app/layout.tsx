@@ -3,13 +3,13 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Pauta",
+  title: "MyDay",
   description: "Fale suas tarefas, com dia e hora, e receba o aviso no celular.",
-  applicationName: "Pauta",
+  applicationName: "MyDay",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Pauta",
+    title: "MyDay",
   },
   formatDetection: { telephone: false },
   icons: {

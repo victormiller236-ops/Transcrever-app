@@ -177,7 +177,7 @@ describe("entrada e instalação (PWA)", () => {
     expect(m.url).toContain("/manifest.webmanifest");
     expect(m.errors).toEqual([]);
     const manifest = JSON.parse(m.data!);
-    expect(manifest.name).toBe("Pauta · tarefas por voz");
+    expect(manifest.name).toBe("MyDay · tarefas por voz");
     expect(manifest.icons.length).toBeGreaterThanOrEqual(3);
 
     const sw = await page.evaluate(async () => {
@@ -479,7 +479,7 @@ describe("avisos", () => {
     await page.getByTestId("test-push").click();
     await toast(page).filter({ hasText: "Aviso de teste enviado" }).waitFor();
     expect(stack.push.calls).toHaveLength(1);
-    expect(decryptPush(sub, stack.push.calls[0].body)).toMatchObject({ title: "Pauta" });
+    expect(decryptPush(sub, stack.push.calls[0].body)).toMatchObject({ title: "MyDay" });
 
     await page.getByTestId("toggle-push").click();
     await toast(page).filter({ hasText: "Avisos desligados" }).waitFor();

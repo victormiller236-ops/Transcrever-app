@@ -218,7 +218,7 @@ export function RecorderSheet({
       typeof MediaRecorder === "undefined"
     ) {
       setError(
-        "Este navegador não permite gravar áudio. Abra o Pauta no Chrome, por HTTPS.",
+        "Este navegador não permite gravar áudio. Abra o MyDay no Chrome, por HTTPS.",
       );
       setPhase("error");
       return;

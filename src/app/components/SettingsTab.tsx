@@ -108,7 +108,7 @@ export function SettingsTab({
       <div className="flex items-center gap-4 pb-2">
         <Logo size={64} />
         <div>
-          <h1 className="text-[26px] font-bold tracking-tight">Pauta</h1>
+          <h1 className="text-[26px] font-bold tracking-tight">MyDay</h1>
           <p className="text-[14px] text-[var(--muted)]">Tarefas por voz, com aviso na hora certa.</p>
         </div>
       </div>
@@ -165,7 +165,7 @@ export function SettingsTab({
 
       <Card title="Instalar no Android" icon="phone">
         {standalone ? (
-          <p className="text-[14px] leading-relaxed text-[var(--muted)]">Pronto: o Pauta já está instalado e abre em tela cheia.</p>
+          <p className="text-[14px] leading-relaxed text-[var(--muted)]">Pronto: o MyDay já está instalado e abre em tela cheia.</p>
         ) : installPrompt ? (
           <>
             <p className="mb-4 text-[14px] leading-relaxed text-[var(--muted)]">
@@ -178,7 +178,7 @@ export function SettingsTab({
               className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] py-3.5 text-[16px] font-bold text-[var(--on-accent)]"
             >
               <Icon name="download" size={18} />
-              Instalar o Pauta
+              Instalar o MyDay
             </button>
           </>
         ) : (

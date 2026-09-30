@@ -84,7 +84,7 @@ describe("acesso e arquivos públicos do PWA", () => {
     const m = await fetch(stack.baseUrl + "/manifest.webmanifest", { redirect: "manual" });
     expect(m.status).toBe(200);
     const manifest = await m.json();
-    expect(manifest).toMatchObject({ short_name: "Pauta", display: "standalone", start_url: "/?source=pwa", scope: "/", lang: "pt-BR" });
+    expect(manifest).toMatchObject({ short_name: "MyDay", display: "standalone", start_url: "/?source=pwa", scope: "/", lang: "pt-BR" });
     const purposes = manifest.icons.map((i: { sizes: string; purpose: string }) => `${i.sizes}:${i.purpose}`);
     expect(purposes).toEqual(expect.arrayContaining(["192x192:any", "512x512:any", "512x512:maskable"]));
 
@@ -403,7 +403,7 @@ describe("push: inscrição e envio (serviço de push falso, cifra real)", () =>
     expect(c.headers["urgency"]).toBe("high");
     expect(c.headers["authorization"]).toMatch(/^vapid t=[\w-]+\.[\w-]+\.[\w-]+, k=/);
     expect(c.headers["authorization"]).toContain(`k=${stack.vapid.publicKey}`);
-    expect(decryptPush(sub, c.body)).toMatchObject({ title: "Pauta", tag: "pauta-teste" });
+    expect(decryptPush(sub, c.body)).toMatchObject({ title: "MyDay", tag: "pauta-teste" });
   });
 
   it("teste sem nenhum aparelho → 409; inscrição morta (410) é removida", async () => {

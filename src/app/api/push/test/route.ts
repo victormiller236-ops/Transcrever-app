@@ -10,7 +10,7 @@ export async function POST() {
   if (subs.length === 0) return fail("Nenhum aparelho com avisos ligados.", 409);
 
   const payload = {
-    title: "Pauta",
+    title: "MyDay",
     body: "Tudo certo: os avisos estão funcionando neste aparelho.",
     url: "/",
     tag: "pauta-teste",

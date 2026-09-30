@@ -1,4 +1,4 @@
-/* Service worker do Pauta.
+/* Service worker do MyDay.
  *
  * Faz três coisas: recebe push (avisos das tarefas), trata os botões
  * "Concluir"/"Adiar" da notificação e mostra uma tela amigável sem internet.
@@ -52,11 +52,11 @@ self.addEventListener("message", (event) => {
 });
 
 function parsePayload(event) {
-  if (!event.data) return { title: "Pauta", body: "", url: "/", tag: "pauta" };
+  if (!event.data) return { title: "MyDay", body: "", url: "/", tag: "pauta" };
   try {
     return event.data.json();
   } catch (_) {
-    return { title: "Pauta", body: event.data.text(), url: "/", tag: "pauta" };
+    return { title: "MyDay", body: event.data.text(), url: "/", tag: "pauta" };
   }
 }
 
@@ -88,7 +88,7 @@ self.addEventListener("push", (event) => {
           { action: "snooze", title: "Adiar 10 min" },
         ];
       }
-      await self.registration.showNotification(p.title || "Pauta", options);
+      await self.registration.showNotification(p.title || "MyDay", options);
     })(),
   );
 });

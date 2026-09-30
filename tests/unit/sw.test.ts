@@ -127,7 +127,7 @@ describe("service worker: push", () => {
 
   it("aviso sem tarefa (teste) não ganha botões; payload ruim não derruba", async () => {
     const sw = load();
-    await sw.push({ title: "Pauta", body: "teste", tag: "pauta-teste" });
+    await sw.push({ title: "MyDay", body: "teste", tag: "pauta-teste" });
     expect(sw.shown[0].options.actions).toBeUndefined();
     expect(sw.shown[0].options.requireInteraction).toBe(false);
 
@@ -140,11 +140,11 @@ describe("service worker: push", () => {
         text: () => "texto solto",
       },
     });
-    expect(broken.shown[0]).toMatchObject({ title: "Pauta", options: { body: "texto solto" } });
+    expect(broken.shown[0]).toMatchObject({ title: "MyDay", options: { body: "texto solto" } });
 
     const empty = load();
     await empty.fire("push", { data: null });
-    expect(empty.shown[0].title).toBe("Pauta");
+    expect(empty.shown[0].title).toBe("MyDay");
   });
 });
 

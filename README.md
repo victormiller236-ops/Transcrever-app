@@ -1,4 +1,4 @@
-# Pauta — tarefas por voz
+# MyDay — tarefas por voz
 
 App pessoal, instalável no Android (PWA), para **falar** suas tarefas com dia e hora
 e **receber o aviso no celular** na hora certa. Junto vem a aba **Transcrever**
@@ -84,7 +84,7 @@ O app já tem login próprio por senha, então pode desligar em *Settings → De
 
 ### 4. Instalar no Android
 
-Abra o endereço no **Chrome**, entre com a senha e use **Instalar o Pauta** (aba Ajustes) ou o menu ⋮ →
+Abra o endereço no **Chrome**, entre com a senha e use **Instalar o MyDay** (aba Ajustes) ou o menu ⋮ →
 *Instalar app*. Depois, em Ajustes, **Ligar avisos** e **Enviar aviso de teste**.
 
 ## Limites que vale conhecer
