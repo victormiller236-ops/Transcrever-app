@@ -52,12 +52,19 @@ jobs:
         working-directory: android-app/android
         run: ./gradlew --no-daemon --stacktrace assembleDebug
 
-      - name: Conferir o APK
+      - name: Conferir o APK (pacote, permissões e assinatura)
         run: |
           apk=android-app/android/app/build/outputs/apk/debug/app-debug.apk
           ls -l "$apk"
           cp "$apk" MyDay.apk
-          "$ANDROID_HOME"/build-tools/*/aapt2 dump badging MyDay.apk | grep -E "package:|sdkVersion|uses-permission" | head -20 || true
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$bt/aapt2" dump badging MyDay.apk | grep -E "^package:|sdkVersion|targetSdkVersion|uses-permission:" | head -30
+          # A assinatura tem que ser a chave fixa do repositório; se mudar, o APK novo não atualiza o antigo.
+          cert=$("$bt/apksigner" verify --print-certs MyDay.apk | grep "SHA-256 digest" | head -1 | sed 's/.*: //' | tr -d ' ' | tr 'A-F' 'a-f')
+          expected=$(keytool -list -v -keystore android-app/debug.keystore -storepass android 2>/dev/null | grep "SHA256:" | head -1 | sed 's/.*SHA256: *//' | tr -d ': ' | tr 'A-F' 'a-f')
+          echo "assinatura do APK: $cert"
+          echo "chave do repositório: $expected"
+          test -n "$cert" && test "$cert" = "$expected"
 
       - uses: actions/upload-artifact@v4
         with:

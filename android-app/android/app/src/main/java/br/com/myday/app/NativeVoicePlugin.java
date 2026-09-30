@@ -50,19 +50,24 @@ public class NativeVoicePlugin extends Plugin {
             call.reject("START_FAILED: " + e.getMessage());
             return;
         }
-        // O serviço grava em outra thread; espera (até ~3 s) confirmar que começou.
-        for (int i = 0; i < 60; i++) {
-            if (RecorderService.isRecording()) {
-                call.resolve();
-                return;
-            }
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException ignored) {
-                break;
-            }
-        }
-        call.reject("START_FAILED");
+        // O serviço começa na thread principal; espera (até ~3 s) fora dela, para nunca bloquear a fila que o inicia.
+        new Thread(
+                        () -> {
+                            for (int i = 0; i < 60; i++) {
+                                if (RecorderService.isRecording()) {
+                                    call.resolve();
+                                    return;
+                                }
+                                try {
+                                    Thread.sleep(50);
+                                } catch (InterruptedException ignored) {
+                                    break;
+                                }
+                            }
+                            call.reject("START_FAILED");
+                        },
+                        "myday-start-wait")
+                .start();
     }
 
     @PluginMethod
