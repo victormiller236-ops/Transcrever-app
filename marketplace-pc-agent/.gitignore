@@ -1,0 +1,4 @@
+.browser-profile/
+seen.json
+resultados.csv
+__pycache__/
