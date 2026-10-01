@@ -38,6 +38,7 @@ def main():
     ap.add_argument("trilhos", nargs="?")
     ap.add_argument("sap", nargs="?")
     ap.add_argument("-o", "--saida", default="Cruzador-IDs.xlsx")
+    ap.add_argument("--busca", default="", help="texto pré-preenchido na aba Busca")
     a = ap.parse_args()
 
     wb = Workbook()
@@ -47,11 +48,12 @@ def main():
         "COMO USAR",
         "1) Aba Trilhos: apague os dados antigos das colunas A:E (mantenha a linha 1) e cole a nova planilha de trilhos a partir da A1.",
         "2) Aba SAP: apague TUDO (selecione as colunas e delete) e cole a planilha do SAP inteira, com cabeçalho, a partir da A1.",
-        "3) Aba Cruzamento: atualiza sozinha com os IDs que existem nas duas planilhas.",
+        "3) Aba Cruzamento: atualiza sozinha com os IDs que existem nas duas planilhas (inclui o ID e a descrição da bobina de origem).",
+        "   Aba Busca: digite na célula amarela (ex.: 279 core) e veja quantas tiras, em quais trilhos, status e bobinas de origem.",
         "4) Na aba Trilhos, a coluna I diz OK ou NÃO ENCONTRADO para cada leitura.",
         "",
         "Regras: o SAP precisa manter os cabeçalhos com os mesmos nomes (a ordem das colunas pode mudar).",
-        f"Capacidade: {LINHAS_TRILHOS} leituras de trilhos. Não mexa nas colunas G, H e I da aba Trilhos nem na coluna N da aba Cruzamento (são fórmulas).",
+        f"Capacidade: {LINHAS_TRILHOS} leituras de trilhos. Não mexa nas colunas G, H e I da aba Trilhos nem nas colunas Q a X da aba Cruzamento (são fórmulas).",
         "Se o Excel estiver lento ao colar o SAP, mude Fórmulas > Opções de Cálculo > Manual, cole, e aperte F9.",
     ]
     for i, t in enumerate(texto, 1):
@@ -100,28 +102,129 @@ def main():
         wt.column_dimensions[col].width = w
 
     # Cruzamento
-    cabecalho(wc, [t for t, _ in SAIDA] + [""] * 0)
-    wc.cell(1, 14, "Linha em Trilhos (auto)").font = Font(bold=True)
-    wc.cell(1, 14).fill = CINZA
+    NS = len(SAIDA)                       # colunas A..M
+    COL_BOB, COL_BOBTXT = 14, 15          # N, O
+    cabecalho(wc, [t for t, _ in SAIDA] + ["ID da bobina de origem", "Bobina de origem (texto breve)"])
+    aux = ["Linha em Trilhos (auto)", "Linha no SAP (auto)", "Bobina bruta (auto)", "Na busca (auto)",
+           "Nº na busca (auto)", "1º do trilho (auto)", "1ª bobina (auto)", "1º status (auto)"]
+    for i, t in enumerate(aux, 17):       # Q..X
+        c = wc.cell(1, i, t)
+        c.font = Font(bold=True)
+        c.fill = CINZA
+    # tokens da busca (até 4 palavras) ficam em Busca!E3:E6
     for r in range(2, LINHAS_RESULTADO + 2):
-        wc.cell(r, 14, f'=IFERROR(MATCH(ROW()-1,Trilhos!$H:$H,0),"")')
+        wc.cell(r, 17, f'=IFERROR(MATCH(ROW()-1,Trilhos!$H:$H,0),"")')
+        wc.cell(r, 18, f'=IF($Q{r}="","",INDEX(Trilhos!$G:$G,$Q{r}))')
+        wc.cell(r, 19, f'=IF($R{r}="","",INDEX(SAP!$A:$AZ,$R{r},MATCH("ID de Material Original",SAP!$1:$1,0))&"")')
         for i, (t, hdr) in enumerate(SAIDA, 1):
             if hdr is None:
-                f = f'=IF($N{r}="","",INDEX(Trilhos!$A:$A,$N{r}))'
+                f = f'=IF($Q{r}="","",INDEX(Trilhos!$A:$A,$Q{r}))'
             else:
-                f = (f'=IF($N{r}="","",INDEX(SAP!$A:$AZ,INDEX(Trilhos!$G:$G,$N{r}),'
-                     f'MATCH("{hdr}",SAP!$1:$1,0)))')
+                f = f'=IF($R{r}="","",INDEX(SAP!$A:$AZ,$R{r},MATCH("{hdr}",SAP!$1:$1,0)))'
             c = wc.cell(r, i, f)
             if t == "Data de criação":
                 c.number_format = "dd/mm/yyyy"
             elif t in ("Largura (mm)", "Peso Atual", "Peso Original"):
                 c.number_format = "#,##0.###"
+        wc.cell(r, COL_BOB, f'=IF(OR($S{r}="",$S{r}="0"),"",$S{r})')
+        wc.cell(r, COL_BOBTXT,
+                f'=IF($N{r}="","",IFERROR(INDEX(SAP!$A:$AZ,IFERROR(MATCH($N{r},SAP!$A:$A,0),MATCH($N{r}+0,SAP!$A:$A,0)),'
+                f'MATCH("Texto breve de material",SAP!$1:$1,0)),""))')
+        # --- busca: cada palavra precisa existir; número casa no início de palavra; ID/bobina por igualdade
+        hay = f'" "&$E{r}&" "&$I{r}&" "&$D{r}&" "&$M{r}&" "&$K{r}&" "&$O{r}&" "&$A{r}&" "'
+        partes = []
+        for k in range(3, 7):
+            tok = f"Busca!$E${k}"
+            partes.append(f'OR({tok}="",ISNUMBER(SEARCH(IF(ISNUMBER(--{tok})," ","")&{tok},{hay})),$B{r}&""={tok},$N{r}&""={tok})')
+        wc.cell(r, 20, f'=IF($Q{r}="","",IF(Busca!$B$3="","",IF(AND({",".join(partes)}),1,0)))')
+        wc.cell(r, 21, f'=IF($T{r}=1,COUNTIF($T$2:$T{r},1),"")')
+        wc.cell(r, 22, f'=IF($T{r}=1,IF(COUNTIFS($A$2:$A{r},$A{r},$T$2:$T{r},1)=1,COUNT($V$1:$V{r-1})+1,""),"")')
+        wc.cell(r, 23, f'=IF(AND($T{r}=1,$N{r}<>""),IF(COUNTIFS($N$2:$N{r},$N{r},$T$2:$T{r},1)=1,COUNT($W$1:$W{r-1})+1,""),"")')
+        wc.cell(r, 24, f'=IF($T{r}=1,IF(COUNTIFS($M$2:$M{r},$M{r},$T$2:$T{r},1)=1,COUNT($X$1:$X{r-1})+1,""),"")')
     for i, (t, _) in enumerate(SAIDA, 1):
         wc.column_dimensions[L(i)].width = {"Texto breve de material": 42, "Nome completo": 30}.get(t, max(11, len(t) + 2))
     wc.column_dimensions["N"].width = 22
-    wc.auto_filter.ref = f"A1:M{LINHAS_RESULTADO + 1}"
-    wb.move_sheet("Cruzamento", offset=-2)
-    wb.active = wb.sheetnames.index("Cruzamento")
+    wc.column_dimensions["O"].width = 42
+    for col in "QRSTUVWX":
+        wc.column_dimensions[col].width = 18
+    wc.auto_filter.ref = f"A1:O{LINHAS_RESULTADO + 1}"
+
+    # Busca
+    wq = wb.create_sheet("Busca")
+    wq["A1"] = "BUSCA NO ESTOQUE DOS TRILHOS"
+    wq["A1"].font = Font(bold=True, size=14)
+    wq["A3"] = "Buscar:"
+    wq["A3"].font = Font(bold=True)
+    wq["B3"] = a.busca or None
+    wq["B3"].fill = PatternFill("solid", fgColor="FFF2CC")
+    wq["B3"].font = Font(bold=True, size=14)
+    wq.merge_cells("B3:D3")
+    wq["A4"] = "Digite palavras separadas por espaço (ex.: 279 core). Todas precisam bater. Aceita também o ID de uma tira ou de uma bobina."
+    wq["A4"].font = Font(italic=True, color="63707E")
+    wq["D2"] = "palavras (auto):"
+    wq["D2"].font = Font(color="999999")
+    for k in range(1, 5):
+        wq.cell(2 + k, 5, f'=TRIM(MID(SUBSTITUTE(TRIM($B$3)," ",REPT(" ",100)),{(k-1)*100+1},100))')
+        wq.cell(2 + k, 5).font = Font(color="999999")
+    wq["A6"] = "Tiras encontradas:"
+    wq["B6"] = '=IF($B$3="","",COUNTIF(Cruzamento!$T:$T,1))'
+    wq["A7"] = "Peso atual somado:"
+    wq["B7"] = '=IF($B$3="","",SUMIF(Cruzamento!$T:$T,1,Cruzamento!$G:$G))'
+    wq["B7"].number_format = "#,##0.###"
+    for c in ("A6", "A7"):
+        wq[c].font = Font(bold=True)
+    wq["B6"].font = Font(bold=True, size=14)
+
+    def bloco(col, titulo, hdrs, n, fmts):
+        wq.cell(9, col, titulo).font = Font(bold=True, size=12)
+        for j, h in enumerate(hdrs):
+            c = wq.cell(10, col + j, h)
+            c.font = Font(bold=True, color="FFFFFF")
+            c.fill = VERDE
+        return 11
+
+    # Por trilho: A:C
+    bloco(1, "Por trilho", ["Trilho", "Tiras", "Peso atual"], 15, None)
+    for k in range(1, 16):
+        r = 10 + k
+        wq.cell(r, 1, f'=IFERROR(INDEX(Cruzamento!$A:$A,MATCH({k},Cruzamento!$V:$V,0)),"")')
+        wq.cell(r, 2, f'=IF($A{r}="","",COUNTIFS(Cruzamento!$A:$A,$A{r},Cruzamento!$T:$T,1))')
+        wq.cell(r, 3, f'=IF($A{r}="","",SUMIFS(Cruzamento!$G:$G,Cruzamento!$A:$A,$A{r},Cruzamento!$T:$T,1))').number_format = "#,##0.###"
+    # Por status: E:F
+    bloco(5, "Por status", ["Status", "Tiras"], 6, None)
+    for k in range(1, 7):
+        r = 10 + k
+        wq.cell(r, 5, f'=IFERROR(INDEX(Cruzamento!$M:$M,MATCH({k},Cruzamento!$X:$X,0)),"")')
+        wq.cell(r, 6, f'=IF($E{r}="","",COUNTIFS(Cruzamento!$M:$M,$E{r},Cruzamento!$T:$T,1))')
+    # Por bobina: H:I
+    bloco(8, "Bobinas de origem", ["ID da bobina", "Tiras"], 30, None)
+    for k in range(1, 31):
+        r = 10 + k
+        wq.cell(r, 8, f'=IFERROR(INDEX(Cruzamento!$N:$N,MATCH({k},Cruzamento!$W:$W,0)),"")')
+        wq.cell(r, 9, f'=IF($H{r}="","",COUNTIFS(Cruzamento!$N:$N,$H{r},Cruzamento!$T:$T,1))')
+    # Lista detalhada
+    wq.cell(44, 1, "Tiras encontradas (até 300)").font = Font(bold=True, size=12)
+    det = [("Trilho", "A"), ("ID", "B"), ("Texto breve de material", "E"), ("Peso Atual", "G"),
+           ("Status", "M"), ("ID da bobina", "N"), ("Criado em", "C")]
+    for j, (h, _) in enumerate(det, 1):
+        c = wq.cell(45, j, h)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = VERDE
+    for k in range(1, 301):
+        r = 45 + k
+        for j, (h, col) in enumerate(det, 1):
+            c = wq.cell(r, j, f'=IFERROR(INDEX(Cruzamento!${col}:${col},MATCH({k},Cruzamento!$U:$U,0)),"")')
+            if h == "Peso Atual":
+                c.number_format = "#,##0.###"
+            if h == "Criado em":
+                c.number_format = "dd/mm/yyyy"
+    for col, w in zip("ABCDEFGHI", (22, 14, 14, 40, 26, 14, 14, 16, 8)):
+        wq.column_dimensions[col].width = w
+    wq.column_dimensions["C"].width = 40
+    wq.column_dimensions["D"].width = 14
+    wb.move_sheet("Busca", offset=-(wb.sheetnames.index("Busca") - 1))
+    wb.move_sheet("Cruzamento", offset=-(wb.sheetnames.index("Cruzamento") - 2))
+    wb.active = wb.sheetnames.index("Busca")
     wb.save(a.saida)
     print("ok", a.saida, "trilhos:", n_t, "sap:", n_s)
 
