@@ -1,4 +1,4 @@
-Attribute VB_Name = "CarregarPlanilhas"
+Attribute VB_Name = "modCruzador"
 Option Explicit
 
 ' Um botao so: escolha as duas planilhas (trilhos e SAP) de uma vez. A macro reconhece qual e qual,
@@ -15,7 +15,7 @@ Public Sub CriarBotao()
         b.Delete
     Next b
     Set b = ws.Buttons.Add(ws.Range("G1").Left, ws.Range("G1").Top, 170, 34)
-    b.OnAction = "CarregarPlanilhas"
+    b.OnAction = "modCruzador.CarregarPlanilhas"
     b.Caption = "Carregar planilhas"
     b.Font.Bold = True
 End Sub
