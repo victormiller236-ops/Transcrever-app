@@ -24,7 +24,12 @@
   button{font:inherit;padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
   button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
   button:disabled{opacity:.45;cursor:not-allowed}
-  input[type=search]{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);min-width:220px}
+  input[type=search]{font:inherit;padding:10px 14px;border-radius:8px;border:2px solid var(--accent);background:var(--card);color:var(--ink);min-width:min(340px,100%);flex:1;max-width:520px}
+  .sum{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .sum h2{margin:0 0 8px;font-size:15px}
+  .sum .big{font-size:26px;font-weight:700}
+  .sum table{width:auto;min-width:320px;margin-top:8px}
+  .sum .cols{display:flex;flex-wrap:wrap;gap:24px}
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
   .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
   .stat small{color:var(--muted);display:block}
@@ -55,10 +60,11 @@
     <span class="fn" id="fn"></span></label>
   <div class="bar">
         <button id="dl" disabled>Baixar Excel (.xlsx)</button>
-    <input type="search" id="q" placeholder="Filtrar resultado..." hidden>
+    <input type="search" id="q" placeholder="Buscar: ex. 279 core" hidden>
   </div>
   <div id="msgs"></div>
   <div class="stats" id="stats" hidden></div>
+  <div id="sum" hidden></div>
   <div class="tablewrap" id="tw" hidden><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
 </main>
 
@@ -107,7 +113,7 @@ function classify(wb){
 }
 
 async function takeFiles(files){
-  $("msgs").innerHTML=""; $("stats").hidden=true; $("tw").hidden=true; $("dl").disabled=true; $("q").hidden=true;
+  $("msgs").innerHTML=""; $("stats").hidden=true; $("tw").hidden=true; $("dl").disabled=true; $("q").hidden=true; $("sum").hidden=true;
   state.T=null; state.S=null; $("drop").classList.remove("ok");
   const lines=[];
   for(const f of files){
@@ -184,15 +190,51 @@ function compare(){
 }
 
 let sortCol=-1, sortDir=1;
+// Busca por palavras (todas precisam bater). Texto: material, texto breve, designação, status, nome.
+// Números batem como número inteiro ("279" acha 279X0,5 mas não 1279X nem um ID 782792); ID só por igualdade.
+const IDX = {trilho:0,id:1,material:3,texto:4,peso:6,desig:8,status:12,nome:10};
+function filtrar(rows,q){
+  const toks = norm(q).split(" ").filter(Boolean);
+  if(!toks.length) return rows;
+  const res = toks.map(t=> /^[\d.,]+$/.test(t) ? new RegExp("(^|[^\\d,.])"+t.replace(/[.,]/g,"[.,]")+"([^\\d]|$)") : null);
+  return rows.filter(r=>{
+    const hay = norm([r[IDX.material],r[IDX.texto],r[IDX.desig],r[IDX.status],r[IDX.nome],r[0]].join(" | "));
+    const id = String(r[IDX.id]);
+    return toks.every((t,i)=> id===t || (res[i] ? res[i].test(hay) : hay.includes(t)));
+  });
+}
+function ordTrilho(a,b){ const na=typeof a==="number", nb=typeof b==="number"; return na&&nb ? a-b : na ? -1 : nb ? 1 : String(a).localeCompare(String(b)); }
+function renderResumo(rows,q){
+  const el=$("sum");
+  if(!norm(q)){ el.hidden=true; return; }
+  el.hidden=false;
+  if(!rows.length){ el.className="sum"; el.innerHTML='<h2>Resultado da busca</h2>Nenhuma tira encontrada para "'+esc(q)+'".'; return; }
+  const porTrilho={}, porStatus={}, porItem={}; let peso=0;
+  rows.forEach(r=>{
+    const t=r[IDX.trilho], w=typeof r[IDX.peso]==="number"?r[IDX.peso]:0; peso+=w;
+    (porTrilho[t]=porTrilho[t]||{n:0,w:0}).n++; porTrilho[t].w+=w;
+    porStatus[r[IDX.status]]=(porStatus[r[IDX.status]]||0)+1;
+    porItem[r[IDX.texto]]=(porItem[r[IDX.texto]]||0)+1;
+  });
+  const f3=v=>v.toLocaleString("pt-BR",{maximumFractionDigits:3});
+  const tab=(h,lin)=>`<div><table><thead><tr>${h.map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${lin.map(l=>`<tr>${l.map((x,i)=>`<td class="${i?"num":""}">${esc(x)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  const trilhos=Object.keys(porTrilho).map(k=>isNaN(k)||k===""?k:Number(k)).sort(ordTrilho);
+  el.className="sum";
+  el.innerHTML=`<h2>Resultado para "${esc(q)}"</h2><div class="big">${rows.length.toLocaleString("pt-BR")} tira${rows.length>1?"s":""}</div><div>Peso atual somado: ${f3(peso)}</div>
+  <div class="cols">${tab(["Trilho","Tiras","Peso atual"],trilhos.map(t=>[t,porTrilho[t].n,f3(porTrilho[t].w)]))}
+  ${tab(["Status","Tiras"],Object.entries(porStatus).sort((a,b)=>b[1]-a[1]))}
+  ${Object.keys(porItem).length>1?tab(["Material","Tiras"],Object.entries(porItem).sort((a,b)=>b[1]-a[1])):""}</div>`;
+}
 function fmt(title,v){
   if(v instanceof Date) return v.toLocaleDateString("pt-BR",{timeZone:"UTC"});
   if(typeof v==="number") return NUM_COLS.has(title) ? v.toLocaleString("pt-BR",{maximumFractionDigits:3}) : String(v);
   return v;
 }
 function render(){
-  const q = norm($("q").value);
-  let rows = state.result.out;
-  if(q) rows = rows.filter(r=>r.some(v=>norm(v instanceof Date?fmt("",v):v).includes(q)));
+  const q = $("q").value;
+  const rows0 = filtrar(state.result.out,q);
+  renderResumo(rows0,q);
+  let rows = rows0;
   if(sortCol>=0) rows = [...rows].sort((a,b)=>{ const x=a[sortCol], y=b[sortCol]; return (x>y?1:x<y?-1:0)*sortDir; });
   $("thead").innerHTML = "<tr>" + OUT_COLS.map((c,i)=>`<th data-i="${i}">${c[0]}${i===sortCol?(sortDir>0?" ▲":" ▼"):""}</th>`).join("") + "</tr>";
   $("tbody").innerHTML = rows.map(r=>"<tr>"+r.map((v,i)=>{
