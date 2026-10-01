@@ -32,8 +32,10 @@ SAIDA = [
     ("Nome completo", "S", "nome completo"),
     ("Bloqueado", "S", "bloqueado"),
     ("Status do ID de Material", "S", "status do id de material"),
+    ("ID da bobina de origem", "B", "id"),
+    ("Bobina de origem (texto breve)", "B", "texto"),
 ]
-LARGURAS = {"Texto breve de material": 42, "Nome completo": 30}
+LARGURAS = {"Bobina de origem (texto breve)": 42, "Texto breve de material": 42, "Nome completo": 30}
 
 
 def norm(s):
@@ -77,7 +79,7 @@ def main():
     cs = {norm(c): i for i, c in reversed(list(enumerate(cab_s)))}
     if "trilho" not in ct:
         sys.exit('Erro: a planilha de trilhos precisa ter a coluna "Trilho".')
-    faltando = [t for t, o, k in SAIDA if o == "S" and k not in cs]
+    faltando = [t for t, o, k in SAIDA if o == "S" and k not in cs] + ([] if "id de material original" in cs else ["ID da bobina de origem"])
     if faltando:
         print("Aviso: colunas não encontradas no SAP (ficarão vazias):", ", ".join(faltando))
 
@@ -104,6 +106,15 @@ def main():
         for _, origem, k in SAIDA:
             if origem == "T":
                 linha.append(trilho)
+            elif origem == "B":
+                o = norm_id(s[cs["id de material original"]]) if "id de material original" in cs else ""
+                if not o or o == "0":
+                    linha.append("")
+                elif k == "id":
+                    linha.append(o)
+                else:
+                    bo = idx.get(o)
+                    linha.append(bo[cs["texto breve de material"]] if bo else "")
             elif k == "id de material":
                 linha.append(i)
             else:

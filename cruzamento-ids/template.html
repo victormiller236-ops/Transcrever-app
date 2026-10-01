@@ -86,6 +86,8 @@ const OUT_COLS = [
   ["Nome completo","S","nome completo"],
   ["Bloqueado","S","bloqueado"],
   ["Status do ID de Material","S","status do id de material"],
+  ["ID da bobina de origem","B","id"],
+  ["Bobina de origem (texto breve)","B","texto"],
 ];
 const NUM_COLS = new Set(["Largura (mm)","Peso Atual","Peso Original"]);
 
@@ -149,7 +151,7 @@ function compare(){
   const tm = colMap(state.T.rows[0]), sm = colMap(state.S.rows[0]);
   if(!("trilho" in tm)) return msg('A planilha de trilhos precisa ter a coluna "Trilho".',"err");
 
-  const missing = OUT_COLS.filter(c=>c[1]==="S" && !(c[2] in sm)).map(c=>c[0]);
+  const missing = OUT_COLS.filter(c=>c[1]==="S" && !(c[2] in sm)).concat(("id de material original" in sm)?[]:[["ID da bobina de origem"]]).map(c=>c[0]);
   if(missing.length) msg("Colunas não encontradas no SAP (ficarão vazias): " + missing.join(", "),"warn");
 
   const idx = new Map();
@@ -167,6 +169,13 @@ function compare(){
     if(!s){ notFound.push({Trilho:trilho,ID:id}); continue; }
     out.push(OUT_COLS.map(([t,src,key])=>{
       if(src==="T") return trilho;
+      if(src==="B"){
+        const o = normId(s[sm["id de material original"]]);
+        if(!o || o==="0") return "";
+        if(key==="id") return o;
+        const bo = idx.get(o);
+        return bo ? bo[sm["texto breve de material"]] : "";
+      }
       if(key==="id de material") return id;
       const v = s[sm[key]];
       return v===undefined ? "" : v;
@@ -192,15 +201,16 @@ function compare(){
 let sortCol=-1, sortDir=1;
 // Busca por palavras (todas precisam bater). Texto: material, texto breve, designação, status, nome.
 // Números batem como número inteiro ("279" acha 279X0,5 mas não 1279X nem um ID 782792); ID só por igualdade.
-const IDX = {trilho:0,id:1,material:3,texto:4,peso:6,desig:8,status:12,nome:10};
+const IDX = {bobina:13,bobinaTxt:14,trilho:0,id:1,material:3,texto:4,peso:6,desig:8,status:12,nome:10};
 function filtrar(rows,q){
   const toks = norm(q).split(" ").filter(Boolean);
   if(!toks.length) return rows;
   const res = toks.map(t=> /^[\d.,]+$/.test(t) ? new RegExp("(^|[^\\d,.])"+t.replace(/[.,]/g,"[.,]")+"([^\\d]|$)") : null);
   return rows.filter(r=>{
-    const hay = norm([r[IDX.material],r[IDX.texto],r[IDX.desig],r[IDX.status],r[IDX.nome],r[0]].join(" | "));
+    const hay = norm([r[IDX.material],r[IDX.texto],r[IDX.desig],r[IDX.status],r[IDX.nome],r[IDX.bobinaTxt],r[0]].join(" | "));
     const id = String(r[IDX.id]);
-    return toks.every((t,i)=> id===t || (res[i] ? res[i].test(hay) : hay.includes(t)));
+    const bid = String(r[IDX.bobina]);
+    return toks.every((t,i)=> id===t || bid===t || (res[i] ? res[i].test(hay) : hay.includes(t)));
   });
 }
 function ordTrilho(a,b){ const na=typeof a==="number", nb=typeof b==="number"; return na&&nb ? a-b : na ? -1 : nb ? 1 : String(a).localeCompare(String(b)); }
@@ -209,12 +219,13 @@ function renderResumo(rows,q){
   if(!norm(q)){ el.hidden=true; return; }
   el.hidden=false;
   if(!rows.length){ el.className="sum"; el.innerHTML='<h2>Resultado da busca</h2>Nenhuma tira encontrada para "'+esc(q)+'".'; return; }
-  const porTrilho={}, porStatus={}, porItem={}; let peso=0;
+  const porTrilho={}, porStatus={}, porItem={}, porBobina={}; let peso=0;
   rows.forEach(r=>{
     const t=r[IDX.trilho], w=typeof r[IDX.peso]==="number"?r[IDX.peso]:0; peso+=w;
     (porTrilho[t]=porTrilho[t]||{n:0,w:0}).n++; porTrilho[t].w+=w;
     porStatus[r[IDX.status]]=(porStatus[r[IDX.status]]||0)+1;
     porItem[r[IDX.texto]]=(porItem[r[IDX.texto]]||0)+1;
+    if(r[IDX.bobina]) porBobina[r[IDX.bobina]]=(porBobina[r[IDX.bobina]]||0)+1;
   });
   const f3=v=>v.toLocaleString("pt-BR",{maximumFractionDigits:3});
   const tab=(h,lin)=>`<div><table><thead><tr>${h.map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${lin.map(l=>`<tr>${l.map((x,i)=>`<td class="${i?"num":""}">${esc(x)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
@@ -223,6 +234,7 @@ function renderResumo(rows,q){
   el.innerHTML=`<h2>Resultado para "${esc(q)}"</h2><div class="big">${rows.length.toLocaleString("pt-BR")} tira${rows.length>1?"s":""}</div><div>Peso atual somado: ${f3(peso)}</div>
   <div class="cols">${tab(["Trilho","Tiras","Peso atual"],trilhos.map(t=>[t,porTrilho[t].n,f3(porTrilho[t].w)]))}
   ${tab(["Status","Tiras"],Object.entries(porStatus).sort((a,b)=>b[1]-a[1]))}
+  ${Object.keys(porBobina).length?tab(["Bobina de origem","Tiras"],Object.entries(porBobina).sort((a,b)=>b[1]-a[1])):""}
   ${Object.keys(porItem).length>1?tab(["Material","Tiras"],Object.entries(porItem).sort((a,b)=>b[1]-a[1])):""}</div>`;
 }
 function fmt(title,v){
@@ -262,6 +274,7 @@ function download(){
     if(d && d.t==="d") d.z="dd/mm/yyyy";
   }
   ws["!cols"] = OUT_COLS.map(([t])=>({wch: t==="Texto breve de material"?42 : t==="Nome completo"?30 : Math.max(10,t.length+2)}));
+  ws["!cols"][14]={wch:42};
   ws["!autofilter"] = {ref:ws["!ref"]};
   ws["!freeze"] = {xSplit:0,ySplit:1};
   XLSX.utils.book_append_sheet(wb,ws,"Cruzamento");
