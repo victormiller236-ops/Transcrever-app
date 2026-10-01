@@ -132,3 +132,11 @@ Private Function CopiarPara(ByVal caminho As String, ByVal abaDestino As String,
     wb.Close SaveChanges:=False
     CopiarPara = ultLin - 1
 End Function
+
+' Esvazia as abas Trilhos e SAP e o campo de busca (para recomecar com outras planilhas).
+Public Sub LimparTudo()
+    If MsgBox("Apagar os dados das abas Trilhos e SAP e a busca?", vbYesNo + vbQuestion) = vbNo Then Exit Sub
+    ThisWorkbook.Worksheets("Trilhos").Range("A:E").ClearContents
+    ThisWorkbook.Worksheets("SAP").Cells.ClearContents
+    ThisWorkbook.Worksheets(ABA_BUSCA).Range("B3").MergeArea.ClearContents   ' B3:D3 e mesclada
+End Sub
